@@ -6,7 +6,7 @@ builder = "DOCKERFILE"
 # Railway does not support --target for multi-stage builds, so we use a
 # dedicated Dockerfile that produces only the pds-core image.
 dockerfilePath = "Dockerfile.pds"
-watchPatterns = ["packages/pds-core/**", "packages/shared/**", "Dockerfile.pds"]
+watchPatterns = ["packages/pds-core/**", "packages/shared/**", "Dockerfile.pds", "docker-entrypoint.sh"]
 
 [deploy]
 healthcheckPath = "/health"

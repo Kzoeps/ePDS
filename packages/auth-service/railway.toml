@@ -6,7 +6,7 @@ builder = "DOCKERFILE"
 # Railway does not support --target for multi-stage builds, so we use a
 # dedicated Dockerfile that produces only the auth-service image.
 dockerfilePath = "Dockerfile.auth"
-watchPatterns = ["packages/auth-service/**", "packages/shared/**", "Dockerfile.auth"]
+watchPatterns = ["packages/auth-service/**", "packages/shared/**", "Dockerfile.auth", "docker-entrypoint.sh"]
 
 [deploy]
 healthcheckPath = "/health"
