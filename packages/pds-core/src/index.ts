@@ -17,7 +17,7 @@ import * as dotenv from 'dotenv'
 dotenv.config()
 
 import type * as http from 'node:http'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { PDS, envToCfg, envToSecrets, readEnv } from '@atproto/pds'
 import {
   generateRandomHandle,
@@ -332,11 +332,22 @@ async function main() {
   // Internal endpoints
   // =========================================================================
 
+  /** Timing-safe check of the x-internal-secret header. Returns false if the
+   *  env var is unset or the header is missing/mismatched. */
+  function verifyInternalSecret(
+    header: string | string[] | undefined,
+  ): boolean {
+    const secret = process.env.EPDS_INTERNAL_SECRET
+    if (!secret || typeof header !== 'string') return false
+    if (secret.length !== header.length) return false
+    return timingSafeEqual(Buffer.from(header), Buffer.from(secret))
+  }
+
   // Protected internal endpoint for auth service to look up an account by email.
   // Replaces the old unauthenticated /_magic/check-email to prevent email enumeration.
   // Queries account.sqlite directly via the PDS accountManager — no mirror table needed.
   pds.app.get('/_internal/account-by-email', async (req, res) => {
-    if (req.headers['x-internal-secret'] !== process.env.EPDS_INTERNAL_SECRET) {
+    if (!verifyInternalSecret(req.headers['x-internal-secret'])) {
       res.status(401).json({ error: 'Unauthorized' })
       return
     }
@@ -345,8 +356,13 @@ async function main() {
       res.status(400).json({ error: 'Missing email' })
       return
     }
-    const account = await pds.ctx.accountManager.getAccountByEmail(email)
-    res.json({ did: account?.did ?? null })
+    try {
+      const account = await pds.ctx.accountManager.getAccountByEmail(email)
+      res.json({ did: account?.did ?? null })
+    } catch (err) {
+      logger.error({ err }, 'Failed to look up account by email')
+      res.status(500).json({ error: 'Internal server error' })
+    }
   })
 
   // Protected internal endpoint for auth service to look up an account by handle or DID.
@@ -354,7 +370,7 @@ async function main() {
   // auth service can skip the email form and go straight to OTP.
   // accountManager.getAccount() accepts both handles and DIDs.
   pds.app.get('/_internal/account-by-handle', async (req, res) => {
-    if (req.headers['x-internal-secret'] !== process.env.EPDS_INTERNAL_SECRET) {
+    if (!verifyInternalSecret(req.headers['x-internal-secret'])) {
       res.status(401).json({ error: 'Unauthorized' })
       return
     }
@@ -363,8 +379,13 @@ async function main() {
       res.status(400).json({ error: 'Missing handle' })
       return
     }
-    const account = await pds.ctx.accountManager.getAccount(handle)
-    res.json({ email: account?.email ?? null })
+    try {
+      const account = await pds.ctx.accountManager.getAccount(handle)
+      res.json({ email: account?.email ?? null })
+    } catch (err) {
+      logger.error({ err }, 'Failed to look up account by handle')
+      res.status(500).json({ error: 'Internal server error' })
+    }
   })
 
   pds.app.get('/health', (_req, res) => {
