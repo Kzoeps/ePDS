@@ -16,6 +16,7 @@ import { emailOTP } from 'better-auth/plugins'
 import { createLogger } from '@certified-app/shared'
 import type { EpdsDb } from '@certified-app/shared'
 import type { EmailSender } from './email/sender.js'
+import { getDidByEmail } from './lib/get-did-by-email.js'
 
 const logger = createLogger('auth:better-auth')
 
@@ -160,9 +161,15 @@ export function createBetterAuth(emailSender: EmailSender, db: EpdsDb): any {
          *
          * Not awaited to avoid timing side-channels (fire and forget).
          */
-        // eslint-disable-next-line @typescript-eslint/require-await -- better-auth requires Promise<void> return but OTP email is fire-and-forget
-        async sendVerificationOTP({ email, otp, type }, ctx) {
-          const isNewUser = type === 'sign-in'
+        async sendVerificationOTP({ email, otp }, ctx) {
+          // Determine whether this is a first-time sign-up or a returning user
+          // by checking if a PDS account already exists for this email.
+          const pdsUrl =
+            process.env.PDS_INTERNAL_URL ||
+            `https://${process.env.PDS_HOSTNAME ?? 'localhost'}`
+          const internalSecret = process.env.EPDS_INTERNAL_SECRET ?? ''
+          const did = await getDidByEmail(email, pdsUrl, internalSecret)
+          const isNewUser = !did
 
           // Try to resolve client_id from the active auth_flow via cookie
           let clientId: string | undefined
@@ -195,7 +202,7 @@ export function createBetterAuth(emailSender: EmailSender, db: EpdsDb): any {
             .catch((err: unknown) => {
               // Log and swallow — caller does not await this
               logger.error(
-                { err, email, type },
+                { err, email, isNewUser },
                 'better-auth: failed to send OTP email',
               )
             })
