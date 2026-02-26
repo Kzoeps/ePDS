@@ -30,7 +30,10 @@ import {
 } from '../lib/client-metadata.js'
 import { escapeHtml, createLogger } from '@certified-app/shared'
 import { socialProviders } from '../better-auth.js'
-import { resolveLoginHint } from '../lib/resolve-login-hint.js'
+import {
+  resolveLoginHint,
+  fetchParLoginHint,
+} from '../lib/resolve-login-hint.js'
 
 const logger = createLogger('auth:login-page')
 
@@ -119,13 +122,32 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
 
     // Pillar 1 — State Determination: decide which step to render based on
     // login_hint presence. No method-assuming side effects in the GET handler.
-    // The login_hint may be an email (from our own demo app) or an AT Protocol
-    // handle (from third-party apps like sdsls.dev). Resolve either to an email.
+    // The login_hint may be:
+    //   a) On the query string as an email (from our demo app)
+    //   b) On the query string as a handle/DID (unlikely but possible)
+    //   c) Only in the stored PAR request (third-party apps like sdsls.dev put
+    //      the handle in the PAR body but don't duplicate it on the redirect URL)
     const pdsInternalUrl =
       process.env.PDS_INTERNAL_URL || ctx.config.pdsPublicUrl
     const internalSecret = process.env.EPDS_INTERNAL_SECRET ?? ''
-    const resolvedEmail = loginHint
-      ? await resolveLoginHint(loginHint, pdsInternalUrl, internalSecret)
+
+    // If no login_hint on the query string, try to retrieve it from the PAR request
+    let effectiveLoginHint = loginHint ?? null
+    if (!effectiveLoginHint && requestUri) {
+      effectiveLoginHint = await fetchParLoginHint(
+        pdsInternalUrl,
+        requestUri,
+        internalSecret,
+      )
+    }
+
+    // Resolve the hint (email, handle, or DID) to an email address
+    const resolvedEmail = effectiveLoginHint
+      ? await resolveLoginHint(
+          effectiveLoginHint,
+          pdsInternalUrl,
+          internalSecret,
+        )
       : null
     const hasLoginHint = !!resolvedEmail
     const initialStep = hasLoginHint ? 'otp' : 'email'
