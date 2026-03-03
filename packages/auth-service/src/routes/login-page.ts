@@ -26,9 +26,15 @@ import type { AuthServiceContext } from '../context.js'
 import {
   resolveClientMetadata,
   resolveClientName,
+  getClientCss,
   type ClientMetadata,
 } from '../lib/client-metadata.js'
-import { escapeHtml, createLogger } from '@certified-app/shared'
+import {
+  escapeHtml,
+  createLogger,
+  otpHtmlAttrs,
+  otpDescriptionText,
+} from '@certified-app/shared'
 import { socialProviders } from '../better-auth.js'
 import {
   resolveLoginHint,
@@ -120,6 +126,11 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
       clientMeta.client_name ??
       (clientId ? await resolveClientName(clientId) : 'an application')
 
+    // CSS injection for trusted clients
+    const customCss = clientId
+      ? getClientCss(clientId, clientMeta, ctx.config.trustedClients)
+      : null
+
     // Pillar 1 — State Determination: decide which step to render based on
     // login_hint presence. No method-assuming side effects in the GET handler.
     // The login_hint may be:
@@ -179,6 +190,7 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
         clientId: clientId ?? '',
         clientName,
         branding: clientMeta,
+        customCss,
         loginHint: emailHint,
         initialStep,
         otpAlreadySent,
@@ -197,6 +209,7 @@ function renderLoginPage(opts: {
   clientId: string
   clientName: string
   branding: ClientMetadata
+  customCss: string | null
   loginHint: string
   initialStep: 'email' | 'otp'
   otpAlreadySent: boolean
@@ -211,6 +224,9 @@ function renderLoginPage(opts: {
   const logoHtml = b.logo_uri
     ? `<img src="${escapeHtml(b.logo_uri)}" alt="${escapeHtml(appName)}" class="client-logo">`
     : ''
+
+  const otp = otpHtmlAttrs()
+  const otpDesc = otpDescriptionText()
 
   const hasGoogle = 'google' in socialProviders
   const hasGithub = 'github' in socialProviders
@@ -284,7 +300,7 @@ function renderLoginPage(opts: {
     .step-email.hidden { display: none; }
     .recovery-link { display: block; margin-top: 16px; color: #888; font-size: 13px; text-decoration: none; }
     .recovery-link:hover { color: #555; }
-  </style>
+  </style>${opts.customCss ? `\n  <style>${opts.customCss}</style>` : ''}
 </head>
 <body>
   <div class="container">
@@ -320,8 +336,8 @@ function renderLoginPage(opts: {
         <input type="hidden" id="otp-email" name="email" value="${escapeHtml(opts.loginHint)}">
         <div class="field">
           <input type="text" id="code" name="code" required
-                 maxlength="8" pattern="[0-9]{8}" inputmode="numeric"
-                 autocomplete="one-time-code" placeholder="00000000" class="otp-input">
+                 maxlength="${otp.maxlength}" pattern="${otp.pattern}" inputmode="${otp.inputmode}"
+                 autocomplete="one-time-code" placeholder="${otp.placeholder}" class="otp-input">
         </div>
         <button type="submit" class="btn-primary">Verify</button>
       </form>
@@ -340,6 +356,7 @@ function renderLoginPage(opts: {
       var authBasePath = ${JSON.stringify(opts.authBasePath)};
       var requestUri = ${JSON.stringify('')};  // not needed client-side; flow_id is in cookie
       var currentEmail = '';
+      var otpDesc = ${JSON.stringify(otpDesc)};
       var errorEl = document.getElementById('error-msg');
       var stepEmail = document.getElementById('step-email');
       var stepOtp = document.getElementById('step-otp');
@@ -361,7 +378,7 @@ function renderLoginPage(opts: {
         currentEmail = email;
         otpEmailInput.value = email;
         var masked = email.replace(/(.{2})[^@]*(@.*)/, '$1***$2');
-        otpSubtitle.textContent = 'We sent an 8-digit code to ' + masked;
+        otpSubtitle.textContent = 'We sent a ' + otpDesc + ' to ' + masked;
         stepEmail.classList.add('hidden');
         stepOtp.classList.add('active');
         recoveryLink.style.display = 'block';
@@ -493,7 +510,7 @@ function renderLoginPage(opts: {
             if (result.error) {
               showError(result.error);
             } else {
-              otpSubtitle.textContent = 'We sent an 8-digit code to ' + masked;
+              otpSubtitle.textContent = 'We sent a ' + otpDesc + ' to ' + masked;
             }
           });
         }

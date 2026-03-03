@@ -30,6 +30,7 @@ function makeMockContext(db: EpdsDb): AuthServiceContext {
       fromName: 'Test PDS',
     },
     dbLocation: ':memory:',
+    trustedClients: [],
   }
 
   return {

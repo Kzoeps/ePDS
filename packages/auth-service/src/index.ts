@@ -130,6 +130,10 @@ async function main() {
       fromName: process.env.SMTP_FROM_NAME || 'ePDS',
     },
     dbLocation: process.env.DB_LOCATION || './data/epds.sqlite',
+    trustedClients: (process.env.PDS_OAUTH_TRUSTED_CLIENTS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
   }
 
   await runBetterAuthMigrations(config.dbLocation, config.hostname)

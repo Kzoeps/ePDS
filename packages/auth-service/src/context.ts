@@ -21,6 +21,8 @@ export interface AuthServiceConfig {
     fromName: string
   }
   dbLocation: string
+  /** OAuth client_id URLs trusted for CSS branding injection. */
+  trustedClients: string[]
 }
 
 const logger = createLogger('auth-service')
