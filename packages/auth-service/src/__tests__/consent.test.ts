@@ -32,6 +32,7 @@ function makeMockContext(db: EpdsDb): AuthServiceContext {
     dbLocation: ':memory:',
     otpLength: 8,
     otpCharset: 'numeric',
+    trustedClients: [],
   }
 
   return {

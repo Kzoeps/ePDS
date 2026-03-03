@@ -26,9 +26,13 @@ import type { AuthServiceContext } from '../context.js'
 import {
   resolveClientMetadata,
   resolveClientName,
+  getClientCss,
   type ClientMetadata,
 } from '../lib/client-metadata.js'
-import { escapeHtml, createLogger } from '@certified-app/shared'
+import {
+  escapeHtml,
+  createLogger,
+} from '@certified-app/shared'
 import { socialProviders } from '../better-auth.js'
 import { buildOtpInputProps } from '../otp-input.js'
 import {
@@ -121,6 +125,11 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
       clientMeta.client_name ??
       (clientId ? await resolveClientName(clientId) : 'an application')
 
+    // CSS injection for trusted clients
+    const customCss = clientId
+      ? getClientCss(clientId, clientMeta, ctx.config.trustedClients)
+      : null
+
     // Pillar 1 — State Determination: decide which step to render based on
     // login_hint presence. No method-assuming side effects in the GET handler.
     // The login_hint may be:
@@ -180,6 +189,7 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
         clientId: clientId ?? '',
         clientName,
         branding: clientMeta,
+        customCss,
         loginHint: emailHint,
         initialStep,
         otpAlreadySent,
@@ -200,6 +210,7 @@ function renderLoginPage(opts: {
   clientId: string
   clientName: string
   branding: ClientMetadata
+  customCss: string | null
   loginHint: string
   initialStep: 'email' | 'otp'
   otpAlreadySent: boolean
@@ -291,7 +302,7 @@ function renderLoginPage(opts: {
     .step-email.hidden { display: none; }
     .recovery-link { display: block; margin-top: 16px; color: #888; font-size: 13px; text-decoration: none; }
     .recovery-link:hover { color: #555; }
-  </style>
+  </style>${opts.customCss ? `\n  <style>${opts.customCss}</style>` : ''}
 </head>
 <body>
   <div class="container">
