@@ -1,8 +1,11 @@
 import { Router, type Request, type Response } from 'express'
 import type { AuthServiceContext } from '../context.js'
-import { resolveClientName } from '../lib/client-metadata.js'
-import { escapeHtml, signCallback } from '@certified-app/shared'
-import { createLogger } from '@certified-app/shared'
+import {
+  resolveClientMetadata,
+  resolveClientName,
+  getClientCss,
+} from '../lib/client-metadata.js'
+import { escapeHtml, signCallback, createLogger } from '@certified-app/shared'
 
 const logger = createLogger('auth:consent')
 
@@ -41,9 +44,14 @@ export function createConsentRouter(ctx: AuthServiceContext): Router {
       const email = req.query.email as string | undefined
       const isNew = req.query.new === '1'
       const clientId = flow.clientId ?? ''
-      const clientName = clientId
-        ? await resolveClientName(clientId)
-        : 'the application'
+      const clientMeta = clientId
+        ? await resolveClientMetadata(clientId)
+        : {}
+      const clientName = clientMeta.client_name
+        || (clientId ? await resolveClientName(clientId) : 'the application')
+      const customCss = clientId
+        ? getClientCss(clientId, clientMeta, ctx.config.trustedClients)
+        : null
 
       res.type('html').send(
         renderConsent({
@@ -53,6 +61,7 @@ export function createConsentRouter(ctx: AuthServiceContext): Router {
           isNew,
           clientId,
           clientName,
+          customCss,
           csrfToken: res.locals.csrfToken,
         }),
       )
@@ -70,9 +79,14 @@ export function createConsentRouter(ctx: AuthServiceContext): Router {
       return
     }
 
-    const clientName = clientId
-      ? await resolveClientName(clientId)
-      : 'the application'
+    const clientMeta = clientId
+      ? await resolveClientMetadata(clientId)
+      : {}
+    const clientName = clientMeta.client_name
+      || (clientId ? await resolveClientName(clientId) : 'the application')
+    const customCss = clientId
+      ? getClientCss(clientId, clientMeta, ctx.config.trustedClients)
+      : null
 
     res.type('html').send(
       renderConsent({
@@ -82,6 +96,7 @@ export function createConsentRouter(ctx: AuthServiceContext): Router {
         isNew,
         clientId: clientId || '',
         clientName,
+        customCss,
         csrfToken: res.locals.csrfToken,
       }),
     )
@@ -184,6 +199,7 @@ function renderConsent(opts: {
   isNew: boolean
   clientId: string
   clientName: string
+  customCss: string | null
   csrfToken: string
 }): string {
   const title = opts.isNew
@@ -223,7 +239,7 @@ function renderConsent(opts: {
     .btn-approve:hover { background: #1a2a40; }
     .btn-deny { background: #f0f0f0; color: #333; }
     .btn-deny:hover { background: #e0e0e0; }
-  </style>
+  </style>${opts.customCss ? `\n  <style>${opts.customCss}</style>` : ''}
 </head>
 <body>
   <div class="container">

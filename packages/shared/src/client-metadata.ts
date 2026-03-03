@@ -5,6 +5,8 @@
  * (login/consent page branding).
  */
 
+import { HandleMode } from "./handle"
+
 export interface ClientBranding {
   css?: string
 }
@@ -20,6 +22,7 @@ export interface ClientMetadata {
   brand_color?: string
   background_color?: string
   branding?: ClientBranding
+  epds_handle_mode?: HandleMode
 }
 
 interface CacheEntry {
