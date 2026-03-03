@@ -10,7 +10,6 @@ export {
   hashToken,
   timingSafeEqual,
   generateCsrfToken,
-  generateOtpCode,
   generateRandomHandle,
   signCallback,
   verifyCallback,
@@ -25,3 +24,17 @@ export type {
 export { DEFAULT_RATE_LIMITS } from './types.js'
 export { createLogger } from './logger.js'
 export { escapeHtml, maskEmail } from './html.js'
+export {
+  otpConfig,
+  generateOtp,
+  otpHtmlAttrs,
+  otpDescriptionText,
+} from './otp-config.js'
+export type { OtpFormat, OtpConfig } from './otp-config.js'
+export {
+  resolveClientMetadata,
+  resolveClientName,
+  escapeCss,
+  getClientCss,
+} from './client-metadata.js'
+export type { ClientMetadata, ClientBranding } from './client-metadata.js'
