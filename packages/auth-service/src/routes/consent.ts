@@ -44,11 +44,10 @@ export function createConsentRouter(ctx: AuthServiceContext): Router {
       const email = req.query.email as string | undefined
       const isNew = req.query.new === '1'
       const clientId = flow.clientId ?? ''
-      const clientMeta = clientId
-        ? await resolveClientMetadata(clientId)
-        : {}
-      const clientName = clientMeta.client_name
-        || (clientId ? await resolveClientName(clientId) : 'the application')
+      const clientMeta = clientId ? await resolveClientMetadata(clientId) : {}
+      const clientName =
+        clientMeta.client_name ||
+        (clientId ? await resolveClientName(clientId) : 'the application')
       const customCss = clientId
         ? getClientCss(clientId, clientMeta, ctx.config.trustedClients)
         : null
@@ -79,11 +78,10 @@ export function createConsentRouter(ctx: AuthServiceContext): Router {
       return
     }
 
-    const clientMeta = clientId
-      ? await resolveClientMetadata(clientId)
-      : {}
-    const clientName = clientMeta.client_name
-      || (clientId ? await resolveClientName(clientId) : 'the application')
+    const clientMeta = clientId ? await resolveClientMetadata(clientId) : {}
+    const clientName =
+      clientMeta.client_name ||
+      (clientId ? await resolveClientName(clientId) : 'the application')
     const customCss = clientId
       ? getClientCss(clientId, clientMeta, ctx.config.trustedClients)
       : null
