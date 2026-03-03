@@ -26,6 +26,13 @@ export function GET() {
     dpop_bound_access_tokens: true,
     brand_color: '#2563eb',
     background_color: '#f8f9fa',
+    branding: {
+      css: [
+        ':root { --demo-accent: #2563eb; --demo-accent-hover: #1d4ed8; }',
+        '.btn-primary { background: linear-gradient(135deg, #2563eb, #7c3aed); }',
+        '.btn-primary:hover { opacity: 0.95; }',
+      ].join(' '),
+    },
   }
 
   return NextResponse.json(metadata, {
