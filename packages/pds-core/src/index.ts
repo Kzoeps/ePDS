@@ -369,7 +369,10 @@ async function main() {
         // Wrap res.setHeader to append the CSS hash to style-src in CSP
         const origSetHeader = res.setHeader.bind(res)
         res.setHeader = (name: string, value: string | string[]) => {
-          if (name.toLowerCase() === 'content-security-policy' && typeof value === 'string') {
+          if (
+            name.toLowerCase() === 'content-security-policy' &&
+            typeof value === 'string'
+          ) {
             // Append our hash to the style-src directive
             value = value.replace(
               /style-src\s+([^;]*)/,
@@ -381,6 +384,7 @@ async function main() {
 
         // Wrap res.end to inject the <style> tag before </head>
         const origEnd = res.end.bind(res)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- wrapping Node http.ServerResponse.end() which has complex overloads
         res.end = (chunk: any, ...args: any[]) => {
           if (typeof chunk === 'string' && chunk.includes('</head>')) {
             chunk = chunk.replace('</head>', `${styleTag}</head>`)
@@ -395,7 +399,10 @@ async function main() {
 
         next()
       } catch (err) {
-        logger.warn({ err, clientId }, 'Failed to resolve client CSS, skipping injection')
+        logger.warn(
+          { err, clientId },
+          'Failed to resolve client CSS, skipping injection',
+        )
         next()
       }
     }
