@@ -10,7 +10,6 @@ export {
   hashToken,
   timingSafeEqual,
   generateCsrfToken,
-  generateOtpCode,
   generateRandomHandle,
   signCallback,
   verifyCallback,
@@ -24,6 +23,13 @@ export type {
 } from './types.js'
 export { DEFAULT_RATE_LIMITS } from './types.js'
 export { createLogger } from './logger.js'
+export {
+  resolveClientMetadata,
+  resolveClientName,
+  escapeCss,
+  getClientCss,
+} from './client-metadata.js'
+export type { ClientMetadata, ClientBranding } from './client-metadata.js'
 export { validateLocalPart, LOCAL_PART_MIN, LOCAL_PART_MAX } from './handle.js'
 export {
   escapeHtml,
