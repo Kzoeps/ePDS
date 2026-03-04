@@ -5,7 +5,7 @@
  * (login/consent page branding).
  */
 
-import { HandleMode } from "./handle"
+import type { HandleMode } from './handle'
 
 export interface ClientBranding {
   css?: string

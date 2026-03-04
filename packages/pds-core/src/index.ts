@@ -491,13 +491,22 @@ async function main() {
         const origEnd = res.end.bind(res)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- wrapping Node http.ServerResponse.end() which has complex overloads
         res.end = (chunk: any, ...args: any[]) => {
+          let rewritten = false
           if (typeof chunk === 'string' && chunk.includes('</head>')) {
             chunk = chunk.replace('</head>', `${styleTag}</head>`)
+            rewritten = true
           } else if (Buffer.isBuffer(chunk)) {
             const str = chunk.toString('utf-8')
             if (str.includes('</head>')) {
               chunk = str.replace('</head>', `${styleTag}</head>`)
+              rewritten = true
             }
+          }
+          if (rewritten) {
+            // Body length changed — remove stale Content-Length and ETag
+            // so the client doesn't see a truncated or incorrectly cached response.
+            res.removeHeader('Content-Length')
+            res.removeHeader('ETag')
           }
           return origEnd(chunk, ...args)
         }
