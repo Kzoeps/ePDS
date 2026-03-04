@@ -21,6 +21,10 @@ export interface AuthServiceConfig {
     fromName: string
   }
   dbLocation: string
+  /** PDS-level branding defaults (overridden by OAuth client metadata if present) */
+  brandColor?: string
+  backgroundColor?: string
+  panelColor?: string
 }
 
 const logger = createLogger('auth-service')

@@ -423,6 +423,13 @@ async function main() {
     }
   })
 
+  // =========================================================================
+  // TLS check - used by Caddy on-demand TLS to verify handle ownership
+  // =========================================================================
+
+  pds.app.get('/tls-check', async (req, res) => {
+    await checkHandleRoute(pds, authHostname, req, res)
+  })
 
   // =========================================================================
   // TLS check - used by Caddy on-demand TLS to verify handle ownership
@@ -449,7 +456,6 @@ async function main() {
   process.on('SIGINT', shutdown)
 }
 
-
 /** Caddy on-demand TLS ask handler.
  *  Returns 200 if the domain is the PDS hostname, the auth subdomain, or a
  *  valid hosted handle, so Caddy knows it should provision a certificate for it. */
@@ -464,12 +470,10 @@ async function checkHandleRoute(
   try {
     const { domain } = req.query
     if (!domain || typeof domain !== 'string') {
-      return res
-        .status(400)
-        .json({
-          error: 'InvalidRequest',
-          message: 'bad or missing domain query param',
-        })
+      return res.status(400).json({
+        error: 'InvalidRequest',
+        message: 'bad or missing domain query param',
+      })
     }
     // Allow the PDS hostname and the auth subdomain through unconditionally
     if (domain === pds.ctx.cfg.service.hostname || domain === authHostname) {
@@ -486,9 +490,10 @@ async function checkHandleRoute(
     }
     const account = await pds.ctx.accountManager.getAccount(domain)
     if (!account) {
-      return res
-        .status(404)
-        .json({ error: 'NotFound', message: 'handle not found for this domain' })
+      return res.status(404).json({
+        error: 'NotFound',
+        message: 'handle not found for this domain',
+      })
     }
     return res.json({ success: true })
   } catch (err) {
