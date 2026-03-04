@@ -10,6 +10,12 @@
         on_demand
     }
 
+    # Block potentially malicious scanner IP ranges
+    # 185.177.72.0/24 - AS211590 Bucklog SARL (FR), known credential/secret harvesting botnet
+    # 195.221.56.0/24 - known scanner infrastructure
+    @malicious_scanners remote_ip 185.177.72.0/24 195.221.56.0/24
+    abort @malicious_scanners
+
     # Auth service
     @auth host auth.{$PDS_HOSTNAME:pds.example}
     handle @auth {

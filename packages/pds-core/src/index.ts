@@ -431,6 +431,14 @@ async function main() {
     await checkHandleRoute(pds, authHostname, req, res)
   })
 
+  // =========================================================================
+  // TLS check - used by Caddy on-demand TLS to verify handle ownership
+  // =========================================================================
+
+  pds.app.get('/tls-check', async (req, res) => {
+    await checkHandleRoute(pds, authHostname, req, res)
+  })
+
   pds.app.get('/health', (_req, res) => {
     res.json({ status: 'ok', service: 'epds' })
   })
