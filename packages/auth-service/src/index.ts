@@ -18,6 +18,11 @@ import { createCompleteRouter } from './routes/complete.js'
 
 const logger = createLogger('auth-service')
 
+/** Only allow hex color values like #fff, #3E7053, #3E705380 */
+function isValidHexColor(val: string | undefined): val is string {
+  return val != null && /^#[0-9a-fA-F]{3,8}$/.test(val)
+}
+
 export function createAuthService(config: AuthServiceConfig): {
   app: express.Express
   ctx: AuthServiceContext
@@ -40,28 +45,13 @@ export function createAuthService(config: AuthServiceConfig): {
   app.use(requestRateLimit({ windowMs: 60_000, maxRequests: 60 }))
 
   // Security headers
-  app.use((req, res, next) => {
+  app.use((_req, res, next) => {
     res.setHeader('X-Frame-Options', 'DENY')
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Referrer-Policy', 'no-referrer')
-
-    // Build img-src dynamically: allow the client's origin if a client_id URL is present
-    let imgSrc = "'self' data:"
-    const clientId = (req.query.client_id as string) || req.body?.client_id
-    if (clientId && typeof clientId === 'string') {
-      try {
-        const clientOrigin = new URL(clientId).origin
-        if (clientOrigin && clientOrigin !== 'null') {
-          imgSrc += ` ${clientOrigin}`
-        }
-      } catch {
-        /* not a valid URL, keep default */
-      }
-    }
-
     res.setHeader(
       'Content-Security-Policy',
-      `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src ${imgSrc}; connect-src 'self'`,
+      `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'`,
     )
     res.setHeader(
       'Strict-Transport-Security',
@@ -130,6 +120,36 @@ async function main() {
       fromName: process.env.SMTP_FROM_NAME || 'ePDS',
     },
     dbLocation: process.env.DB_LOCATION || './data/epds.sqlite',
+    brandColor: isValidHexColor(process.env.AUTH_BRAND_COLOR)
+      ? process.env.AUTH_BRAND_COLOR
+      : undefined,
+    backgroundColor: isValidHexColor(process.env.AUTH_BACKGROUND_COLOR)
+      ? process.env.AUTH_BACKGROUND_COLOR
+      : undefined,
+    panelColor: isValidHexColor(process.env.AUTH_PANEL_COLOR)
+      ? process.env.AUTH_PANEL_COLOR
+      : undefined,
+  }
+
+  if (
+    process.env.AUTH_BRAND_COLOR &&
+    !isValidHexColor(process.env.AUTH_BRAND_COLOR)
+  ) {
+    logger.warn('AUTH_BRAND_COLOR rejected: must be a hex color (e.g. #3E7053)')
+  }
+  if (
+    process.env.AUTH_BACKGROUND_COLOR &&
+    !isValidHexColor(process.env.AUTH_BACKGROUND_COLOR)
+  ) {
+    logger.warn(
+      'AUTH_BACKGROUND_COLOR rejected: must be a hex color (e.g. #3E7053)',
+    )
+  }
+  if (
+    process.env.AUTH_PANEL_COLOR &&
+    !isValidHexColor(process.env.AUTH_PANEL_COLOR)
+  ) {
+    logger.warn('AUTH_PANEL_COLOR rejected: must be a hex color (e.g. #3E7053)')
   }
 
   await runBetterAuthMigrations(config.dbLocation, config.hostname)
