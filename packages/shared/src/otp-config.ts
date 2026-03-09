@@ -25,7 +25,7 @@ const ALPHANUMERIC_CHARS = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
 /** Read and validate OTP config from environment variables. */
 function resolveOtpConfig(): OtpConfig {
   const rawLength = process.env.OTP_LENGTH
-  const length = rawLength ? parseInt(rawLength, 10) : 6
+  const length = rawLength ? parseInt(rawLength, 10) : 8
   if (isNaN(length) || length < 4 || length > 12) {
     throw new Error(
       `OTP_LENGTH must be an integer between 4 and 12, got: ${rawLength}`,
