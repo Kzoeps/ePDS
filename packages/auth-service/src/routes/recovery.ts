@@ -18,6 +18,11 @@ import { Router, type Request, type Response } from 'express'
 import type { AuthServiceContext } from '../context.js'
 import { createLogger } from '@certified-app/shared'
 import { escapeHtml, maskEmail } from '@certified-app/shared'
+import {
+  resolveClientMetadata,
+  getClientCss,
+  type ClientMetadata,
+} from '../lib/client-metadata.js'
 
 const logger = createLogger('auth:recovery')
 
@@ -30,18 +35,32 @@ export function createRecoveryRouter(
 ): Router {
   const router = Router()
 
-  router.get('/auth/recover', (req: Request, res: Response) => {
+  router.get('/auth/recover', async (req: Request, res: Response) => {
     const requestUri = req.query.request_uri as string | undefined
+    let clientId = req.query.client_id as string | undefined
 
     if (!requestUri) {
       res.status(400).send(renderError('Missing request_uri parameter'))
       return
     }
 
+    // Fall back to clientId stored in auth_flow if absent from query string
+    if (!clientId) {
+      const flow = ctx.db.getAuthFlowByRequestUri(requestUri)
+      if (flow?.clientId) clientId = flow.clientId
+    }
+
+    const customCss = await resolveCustomCss(
+      clientId,
+      ctx.config.trustedClients,
+    )
+
     res.type('html').send(
       renderRecoveryForm({
         requestUri,
+        clientId,
         csrfToken: res.locals.csrfToken,
+        customCss,
       }),
     )
   })
@@ -49,12 +68,20 @@ export function createRecoveryRouter(
   router.post('/auth/recover', async (req: Request, res: Response) => {
     const email = ((req.body.email as string) || '').trim().toLowerCase()
     const requestUri = req.body.request_uri as string
+    const clientId = req.body.client_id as string | undefined
+
+    const customCss = await resolveCustomCss(
+      clientId,
+      ctx.config.trustedClients,
+    )
 
     if (!email || !requestUri) {
       res.status(400).send(
         renderRecoveryForm({
           requestUri: requestUri || '',
+          clientId,
           csrfToken: res.locals.csrfToken,
+          customCss,
           error: 'Email and request URI are required.',
         }),
       )
@@ -65,7 +92,9 @@ export function createRecoveryRouter(
       res.status(400).send(
         renderRecoveryForm({
           requestUri,
+          clientId,
           csrfToken: res.locals.csrfToken,
+          customCss,
           error: 'Please enter a valid email address.',
         }),
       )
@@ -108,6 +137,8 @@ export function createRecoveryRouter(
             email,
             csrfToken: res.locals.csrfToken,
             requestUri,
+            clientId,
+            customCss,
           }),
         )
       } catch (err) {
@@ -117,6 +148,8 @@ export function createRecoveryRouter(
             email,
             csrfToken: res.locals.csrfToken,
             requestUri,
+            clientId,
+            customCss,
             error: 'Failed to send code. Please try again.',
           }),
         )
@@ -128,6 +161,8 @@ export function createRecoveryRouter(
           email,
           csrfToken: res.locals.csrfToken,
           requestUri,
+          clientId,
+          customCss,
         }),
       )
     }
@@ -138,11 +173,17 @@ export function createRecoveryRouter(
     const code = ((req.body.code as string) || '').trim()
     const email = ((req.body.email as string) || '').trim().toLowerCase()
     const requestUri = req.body.request_uri as string
+    const clientId = req.body.client_id as string | undefined
 
     if (!code || !email || !requestUri) {
       res.status(400).send('<p>Missing required fields.</p>')
       return
     }
+
+    const customCss = await resolveCustomCss(
+      clientId,
+      ctx.config.trustedClients,
+    )
 
     try {
       // Verify OTP via better-auth — this creates/updates a session
@@ -181,6 +222,8 @@ export function createRecoveryRouter(
           email,
           csrfToken: res.locals.csrfToken,
           requestUri,
+          clientId,
+          customCss,
           error: errMsg,
         }),
       )
@@ -192,7 +235,9 @@ export function createRecoveryRouter(
 
 function renderRecoveryForm(opts: {
   requestUri: string
+  clientId?: string
   csrfToken: string
+  customCss?: string | null
   error?: string
 }): string {
   const encodedUri = encodeURIComponent(opts.requestUri)
@@ -203,6 +248,7 @@ function renderRecoveryForm(opts: {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Account Recovery</title>
   <style>${CSS}</style>
+  ${opts.customCss ? `<style>${opts.customCss}</style>` : ''}
 </head>
 <body>
   <div class="container">
@@ -212,6 +258,7 @@ function renderRecoveryForm(opts: {
     <form method="POST" action="/auth/recover">
       <input type="hidden" name="csrf" value="${escapeHtml(opts.csrfToken)}">
       <input type="hidden" name="request_uri" value="${escapeHtml(opts.requestUri)}">
+      ${opts.clientId ? `<input type="hidden" name="client_id" value="${escapeHtml(opts.clientId)}">` : ''}
       <div class="field">
         <label for="email">Backup email address</label>
         <input type="email" id="email" name="email" required autofocus
@@ -219,7 +266,7 @@ function renderRecoveryForm(opts: {
       </div>
       <button type="submit" class="btn-primary">Send recovery code</button>
     </form>
-    <a href="/oauth/authorize?request_uri=${encodedUri}" class="btn-secondary">Back to sign in</a>
+    <a href="/oauth/authorize?request_uri=${encodedUri}${opts.clientId ? `&client_id=${encodeURIComponent(opts.clientId)}` : ''}" class="btn-secondary">Back to sign in</a>
   </div>
 </body>
 </html>`
@@ -229,6 +276,8 @@ function renderOtpForm(opts: {
   email: string
   csrfToken: string
   requestUri: string
+  clientId?: string
+  customCss?: string | null
   error?: string
 }): string {
   const maskedEmail = maskEmail(opts.email)
@@ -241,6 +290,7 @@ function renderOtpForm(opts: {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Enter recovery code</title>
   <style>${CSS}</style>
+  ${opts.customCss ? `<style>${opts.customCss}</style>` : ''}
 </head>
 <body>
   <div class="container">
@@ -251,6 +301,7 @@ function renderOtpForm(opts: {
       <input type="hidden" name="csrf" value="${escapeHtml(opts.csrfToken)}">
       <input type="hidden" name="request_uri" value="${escapeHtml(opts.requestUri)}">
       <input type="hidden" name="email" value="${escapeHtml(opts.email)}">
+      ${opts.clientId ? `<input type="hidden" name="client_id" value="${escapeHtml(opts.clientId)}">` : ''}
       <div class="field">
         <input type="text" id="code" name="code" required autofocus
                maxlength="8" pattern="[0-9]{8}" inputmode="numeric" autocomplete="one-time-code"
@@ -262,12 +313,27 @@ function renderOtpForm(opts: {
       <input type="hidden" name="csrf" value="${escapeHtml(opts.csrfToken)}">
       <input type="hidden" name="request_uri" value="${escapeHtml(opts.requestUri)}">
       <input type="hidden" name="email" value="${escapeHtml(opts.email)}">
+      ${opts.clientId ? `<input type="hidden" name="client_id" value="${escapeHtml(opts.clientId)}">` : ''}
       <button type="submit" class="btn-secondary">Resend code</button>
     </form>
-    <a href="/oauth/authorize?request_uri=${encodedUri}" class="btn-secondary">Back to sign in</a>
+    <a href="/oauth/authorize?request_uri=${encodedUri}${opts.clientId ? `&client_id=${encodeURIComponent(opts.clientId)}` : ''}" class="btn-secondary">Back to sign in</a>
   </div>
 </body>
 </html>`
+}
+
+async function resolveCustomCss(
+  clientId: string | undefined,
+  trustedClients: string[],
+): Promise<string | null> {
+  if (!clientId) return null
+  if (!trustedClients.includes(clientId)) return null
+  try {
+    const meta: ClientMetadata = await resolveClientMetadata(clientId)
+    return getClientCss(clientId, meta, trustedClients)
+  } catch {
+    return null
+  }
 }
 
 function renderError(message: string): string {

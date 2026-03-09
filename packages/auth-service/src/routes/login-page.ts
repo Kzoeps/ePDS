@@ -51,7 +51,9 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
 
   router.get('/oauth/authorize', async (req: Request, res: Response) => {
     const requestUri = req.query.request_uri as string | undefined
-    const clientId = req.query.client_id as string | undefined
+    // clientId may be absent when returning from recovery via "Back to sign in"
+    // — fall back to the stored value in the existing flow after lookup below
+    let clientId = req.query.client_id as string | undefined
     const loginHint = req.query.login_hint as string | undefined
 
     if (!requestUri) {
@@ -82,6 +84,11 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
     const existingFlow = ctx.db.getAuthFlowByRequestUri(requestUri)
     if (existingFlow) {
       flowId = existingFlow.flowId
+      // Restore clientId from the stored flow if absent from the query string
+      // (e.g. when returning via "Back to sign in" from the recovery pages)
+      if (!clientId && existingFlow.clientId) {
+        clientId = existingFlow.clientId
+      }
       logger.warn(
         {
           flowId,
@@ -130,6 +137,17 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
     const customCss = clientId
       ? getClientCss(clientId, clientMeta, ctx.config.trustedClients)
       : null
+
+    logger.debug(
+      {
+        clientId,
+        trustedCount: ctx.config.trustedClients.length,
+        hasBrandingCss: !!clientMeta.branding?.css,
+        isTrusted: ctx.config.trustedClients.includes(clientId ?? ''),
+        customCssLength: customCss?.length ?? 0,
+      },
+      'CSS injection check',
+    )
 
     // Pillar 1 — State Determination: decide which step to render based on
     // login_hint presence. No method-assuming side effects in the GET handler.
@@ -197,6 +215,7 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
         csrfToken: res.locals.csrfToken,
         authBasePath: '/api/auth',
         pdsPublicUrl: ctx.config.pdsPublicUrl,
+        requestUri,
       }),
     )
   })
@@ -216,6 +235,7 @@ function renderLoginPage(opts: {
   csrfToken: string
   authBasePath: string
   pdsPublicUrl: string
+  requestUri: string
 }): string {
   const b = opts.branding
   const appName = b.client_name || opts.clientName || 'Certified'
@@ -345,7 +365,7 @@ function renderLoginPage(opts: {
       <button type="button" class="btn-secondary" id="btn-back" style="margin-left: 8px;">Use different email</button>
     </div>
 
-    <a href="/auth/recover?request_uri=${encodeURIComponent(opts.pdsPublicUrl + '/placeholder')}"
+    <a href="/auth/recover?request_uri=${escapeHtml(encodeURIComponent(opts.requestUri))}&client_id=${escapeHtml(encodeURIComponent(opts.clientId))}"
        class="recovery-link" id="recovery-link" style="display:${opts.initialStep === 'otp' ? 'block' : 'none'};">
       Recover with backup email
     </a>
