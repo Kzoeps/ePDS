@@ -196,8 +196,21 @@ async function main() {
       authorizeUrl.searchParams.set('request_uri', requestUri)
       authorizeUrl.searchParams.set('client_id', clientId)
 
+      // Use a client-side redirect to break the Sec-Fetch-Site chain.
+      // A 303 redirect preserves the original initiator (auth-service subdomain),
+      // causing the browser to report Sec-Fetch-Site: same-site, which the stock
+      // @atproto/oauth-provider middleware rejects. A client-side redirect starts
+      // a fresh navigation with Sec-Fetch-Site: none.
+      const escapedUrl = authorizeUrl.toString().replace(/"/g, '&quot;')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
       res.setHeader('Cache-Control', 'no-store')
-      res.redirect(303, authorizeUrl.toString())
+      res.send(`<!DOCTYPE html>
+<html><head>
+<meta http-equiv="refresh" content="0;url=${escapedUrl}">
+</head><body>
+<p>Redirecting to authorization...</p>
+<script>window.location.replace("${escapedUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}")</script>
+</body></html>`)
     } catch (err) {
       logger.error({ err }, 'epds-setup failed')
       res.status(500).json({ error: 'Internal server error' })
