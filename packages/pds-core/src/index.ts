@@ -188,6 +188,26 @@ async function main() {
       // Step 5: Link device to account
       await provider.accountManager.upsertDeviceAccount(deviceId, did)
 
+      // Step 5b: Inject login_hint into stored PAR parameters
+      // The stock authorize() sets selected:true on sessions where
+      // parameters.login_hint matches the account DID. Without this,
+      // the React app shows an account picker (even with one account).
+      // We update the stored request to include login_hint = did so
+      // the stock flow auto-selects the correct account.
+      const REQUEST_URI_PREFIX = 'urn:ietf:params:oauth:request_uri:'
+      const requestId = decodeURIComponent(
+        requestUri.slice(REQUEST_URI_PREFIX.length),
+      )
+      const storedRequest = await (provider as any).requestManager.store // eslint-disable-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider requestManager not exported
+        .readRequest(requestId)
+      if (storedRequest && !storedRequest.parameters.login_hint) {
+        await (provider as any).requestManager.store // eslint-disable-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider requestManager not exported
+          .updateRequest(requestId, {
+            parameters: { ...storedRequest.parameters, login_hint: did },
+          })
+        logger.debug({ did }, 'Injected login_hint into stored PAR parameters')
+      }
+
       // Step 6: Redirect to stock /oauth/authorize
       // The stock middleware will call server.authorize() which finds our
       // device session, builds the sessions list (including our account),
