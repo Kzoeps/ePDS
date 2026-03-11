@@ -1,6 +1,6 @@
 /**
- * Tests for the consent route — covers both flow_id mode (new) and legacy
- * request_uri mode (for backward compatibility with old OTP path).
+ * Tests for auth_flow DB operations, client login tracking, and HMAC
+ * callback signing — all used by the complete.ts bridge route.
  *
  * Uses minimal mock req/res objects to avoid a supertest dependency.
  */
@@ -12,7 +12,7 @@ import { EpdsDb } from '@certified-app/shared'
 import type { AuthServiceContext } from '../context.js'
 import type { AuthServiceConfig } from '../context.js'
 
-// Build a minimal mock context for consent tests
+// Build a minimal mock context for complete route tests
 function makeMockContext(db: EpdsDb): AuthServiceContext {
   const config: AuthServiceConfig = {
     hostname: 'auth.localhost',
@@ -42,53 +42,7 @@ function makeMockContext(db: EpdsDb): AuthServiceContext {
   }
 }
 
-// Mock helpers for future route-level tests (currently only DB logic is tested)
-
-function _makeMockRes() {
-  const res = {
-    _status: 200,
-    body: '',
-    redirectTo: '',
-    cleared: [] as string[],
-    locals: { csrfToken: 'test-csrf-token' },
-    status(code: number) {
-      this._status = code
-      return this
-    },
-    type(_t: string) {
-      return this
-    },
-    send(body: string) {
-      this.body = body
-      return this
-    },
-    redirect(code: number, url: string) {
-      this._status = code
-      this.redirectTo = url
-      return this
-    },
-    clearCookie(name: string) {
-      this.cleared.push(name)
-      return this
-    },
-  }
-  return res
-}
-
-function _makeGetReq(queryStr: string) {
-  const url = new URL('http://localhost/auth/consent?' + queryStr)
-  const query: Record<string, string> = {}
-  url.searchParams.forEach((v, k) => {
-    query[k] = v
-  })
-  return { query, cookies: {}, body: {} }
-}
-
-function _makePostReq(body: Record<string, string>) {
-  return { query: {}, cookies: {}, body }
-}
-
-describe('Consent route logic', () => {
+describe('Auth flow DB and callback signing logic', () => {
   let db: EpdsDb
   let dbPath: string
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -108,7 +62,7 @@ describe('Consent route logic', () => {
     } catch {}
   })
 
-  describe('auth_flow table operations (used by consent)', () => {
+  describe('auth_flow table operations (used by complete.ts bridge route)', () => {
     it('creates and retrieves an auth_flow record', () => {
       db.createAuthFlow({
         flowId: 'flow-abc',
@@ -152,7 +106,7 @@ describe('Consent route logic', () => {
     })
   })
 
-  describe('client login tracking (used by consent)', () => {
+  describe('client login tracking (used by auth flow)', () => {
     it('records and detects client login', () => {
       expect(
         db.hasClientLogin('user@example.com', 'https://app.example.com'),
@@ -178,7 +132,7 @@ describe('Consent route logic', () => {
     })
   })
 
-  describe('signCallback (used by consent POST)', () => {
+  describe('signCallback (used by complete.ts to sign epds-setup redirect)', () => {
     it('produces a stable HMAC signature for the same inputs', async () => {
       const { signCallback } = await import('@certified-app/shared')
       const params = {
@@ -216,9 +170,9 @@ describe('Consent route logic', () => {
     })
   })
 
-  describe('flow_id mode: consent uses auth_flow table', () => {
-    it('auth_flow row survives consent GET (not deleted until POST approve)', () => {
-      // Simulate complete.ts creating an auth_flow before redirecting to consent
+  describe('flow_id mode: complete.ts uses auth_flow table', () => {
+    it('auth_flow row persists until complete.ts reads and deletes it', () => {
+      // Simulate login-page.ts creating an auth_flow before redirecting to better-auth
       db.createAuthFlow({
         flowId: 'get-flow',
         requestUri: 'urn:ietf:params:oauth:request_uri:get-test',
@@ -226,11 +180,11 @@ describe('Consent route logic', () => {
         expiresAt: Date.now() + 5 * 60 * 1000,
       })
 
-      // GET consent should not delete the flow
+      // Flow should be readable before complete.ts processes it
       const flow = db.getAuthFlow('get-flow')
       expect(flow).toBeDefined()
 
-      // Simulate: consent GET reads the flow but doesn't delete it
+      // Simulate: complete.ts reads the flow (does not delete yet)
       const retrieved = db.getAuthFlow('get-flow')
       expect(retrieved).toBeDefined()
       expect(retrieved!.requestUri).toBe(
@@ -238,7 +192,7 @@ describe('Consent route logic', () => {
       )
     })
 
-    it('auth_flow row is deleted after approve (POST)', () => {
+    it('auth_flow row is deleted after complete.ts redirects to epds-setup', () => {
       db.createAuthFlow({
         flowId: 'post-flow',
         requestUri: 'urn:ietf:params:oauth:request_uri:post-test',
@@ -246,7 +200,7 @@ describe('Consent route logic', () => {
         expiresAt: Date.now() + 5 * 60 * 1000,
       })
 
-      // Simulate what consent POST does on approve
+      // Simulate what complete.ts does: read then delete the flow
       const flow = db.getAuthFlow('post-flow')
       expect(flow).toBeDefined()
       db.deleteAuthFlow('post-flow')
