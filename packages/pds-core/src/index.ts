@@ -25,12 +25,6 @@ import {
   verifyCallback,
 } from '@certified-app/shared'
 
-// Internal import — pinned to @atproto/oauth-provider@^0.15.x
-// Must be verified on @atproto version bumps.
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — internal module, no type declarations exported
-import { sendAuthorizePageFactory } from '@atproto/oauth-provider/dist/router/assets/send-authorization-page.js'
-
 const logger = createLogger('pds-core')
 
 async function main() {
@@ -64,72 +58,62 @@ async function main() {
   const epdsCallbackSecret =
     process.env.EPDS_CALLBACK_SECRET || 'dev-callback-secret-change-me'
 
-  // Initialize the stock @atproto consent page renderer (used by epds-setup)
-  const issuerUrl = new URL(pdsUrl)
-  const sendAuthorizePage = provider
-    ? // eslint-disable-next-line @typescript-eslint/no-explicit-any -- sendAuthorizePageFactory is from an internal module with no type declarations
-      sendAuthorizePageFactory((provider as any).customization, {
-        hsts: issuerUrl.protocol === 'http:' ? false : undefined,
-      })
-    : null
-
   // =========================================================================
-  // EPDS SETUP - Renders stock @atproto consent page after OTP verification
+  // EPDS SETUP - Account setup then redirect to stock /oauth/authorize
   // =========================================================================
-  //
-  // Called by auth-service after OTP verification (replaces old consent page flow).
-  // Phase A: Verify HMAC signature, load device, resolve/create account, link device.
-  // Phase B: Call provider.authorize() and render the stock @atproto consent page,
-  //          with the authenticated user pre-selected in the sessions list.
 
+  /**
+   * GET /oauth/epds-setup
+   *
+   * Redirect target from auth-service after OTP verification.
+   * Sets up the PDS account and device session, then redirects to the stock
+   * /oauth/authorize endpoint which renders the AT Protocol consent page.
+   *
+   * Flow:
+   * 1. Verify HMAC signature (prevents forged emails)
+   * 2. Load device session (sets cookie for stock OAuth flow)
+   * 3. Bind device to the pending PAR request
+   * 4. Resolve or create PDS account
+   * 5. Link device to account
+   * 6. Redirect to GET /oauth/authorize?request_uri=...&client_id=...
+   *    The stock middleware renders the consent page with the user's
+   *    account in the sessions list.
+   */
   pds.app.get('/oauth/epds-setup', async (req, res) => {
-    // We use `as any` casts for branded OAuth types (RequestUri, Code, etc.)
-    // since these internal types aren't cleanly exported from @atproto/oauth-provider.
-
     const requestUri = req.query.request_uri as string
     const email = ((req.query.email as string) || '').toLowerCase()
+    const newAccountStr = req.query.new_account as string
     const ts = req.query.ts as string
     const sig = req.query.sig as string
 
-    // Phase A — validate params
+    // Validate required params
     if (!requestUri || !email) {
       res.status(400).json({ error: 'Missing required parameters' })
       return
     }
 
-    if (!ts || !sig) {
-      res.status(403).json({ error: 'Missing signature' })
-      return
+    // Verify HMAC signature
+    const callbackParams = {
+      request_uri: requestUri,
+      email,
+      approved: '1',
+      new_account: newAccountStr || '0',
     }
-
-    // Verify HMAC-SHA256 signature before performing any account operations.
-    // auth-service still sends approved and new_account for HMAC compatibility.
-    const newAccountStr = req.query.new_account as string
-    const signatureValid = verifyCallback(
-      {
-        request_uri: requestUri,
-        email,
-        approved: '1',
-        new_account: newAccountStr,
-      },
-      ts,
-      sig,
-      epdsCallbackSecret,
-    )
-
-    if (!signatureValid) {
-      // Distinguish expired from invalid to help with clock-skew debugging
+    if (!verifyCallback(callbackParams, ts, sig, epdsCallbackSecret)) {
       const tsNum = parseInt(ts, 10)
       const age = Math.floor(Date.now() / 1000) - tsNum
-      if (!isNaN(tsNum) && age > 5 * 60) {
+      if (!isNaN(tsNum) && age > 300) {
+        logger.warn({ age }, 'Callback signature expired')
         res.status(400).json({ error: 'Callback signature expired' })
       } else {
+        logger.warn('Invalid callback signature')
         res.status(403).json({ error: 'Invalid callback signature' })
       }
       return
     }
 
-    if (!provider || !sendAuthorizePage) {
+    if (!provider) {
+      logger.error('OAuth provider not configured')
       res.status(500).json({ error: 'OAuth provider not configured' })
       return
     }
@@ -137,43 +121,37 @@ async function main() {
     let did: string | undefined
 
     try {
-      // Step 1: Load or create device session
-      const deviceInfo = await provider.deviceManager.load(
-        req as unknown as http.IncomingMessage,
-        res as unknown as http.ServerResponse,
-      )
-      const { deviceId, deviceMetadata } = deviceInfo
+      // Step 2: Load device session (sets cookie in browser)
+      const { deviceId, deviceMetadata } = await (provider as any).deviceManager // eslint-disable-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider deviceManager not exported
+        .load(
+          req as unknown as http.IncomingMessage,
+          res as unknown as http.ServerResponse,
+        )
 
-      // Step 2: Get the pending authorization request
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider requestManager not exported
-      const requestData = await (provider.requestManager as any).get(
-        requestUri,
-        deviceId,
-      )
-      const { clientId, parameters } = requestData
+      // Step 3: Bind device to the pending PAR request
+      // This calls requestManager.get() which binds the deviceId to the request
+      // on first call. The stock /oauth/authorize will call it again with the
+      // same deviceId (from the cookie we just set) and it will pass.
+      const { clientId } = await (provider as any).requestManager // eslint-disable-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider requestManager not exported
+        .get(requestUri, deviceId)
 
-      // Step 3: Get the client (needed by sendAuthorizePage for metadata/trust info)
-      const client = await provider.clientManager.getClient(clientId)
-
-      // Step 4: Resolve or create the account.
+      // Step 4: Resolve or create PDS account
       const existingAccount =
         await pds.ctx.accountManager.getAccountByEmail(email)
-      did = existingAccount?.did
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider Account type not exported
-      let account: any
-
-      if (did) {
-        // Existing account
-        const accountData = await provider.accountManager.getAccount(did)
-        account = accountData.account
+      if (existingAccount) {
+        const accountData = await provider.accountManager.getAccount(
+          existingAccount.did,
+        )
+        did = accountData.account.sub
+        logger.info({ did, email }, 'Resolved existing account (epds-setup)')
       } else {
-        // New account - create via the OAuthProvider's sign-up mechanism
-        // Retry up to 3 times in case of handle collision
+        // Create new account with retry for handle collisions
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
             const handle = generateRandomHandle(handleDomain)
-            account = await provider.accountManager.createAccount(
+            const password = randomBytes(32).toString('hex')
+            const account = await provider.accountManager.createAccount(
               deviceId,
               deviceMetadata,
               {
@@ -184,7 +162,7 @@ async function main() {
                 // row (registerAccount requires a password). The password is never
                 // returned or stored anywhere accessible, so the account is effectively
                 // passwordless — login is only possible via the magic OTP flow.
-                password: randomBytes(32).toString('hex'),
+                password,
                 // Invite code is required when PDS_INVITE_REQUIRED is true (the default).
                 // EPDS_INVITE_CODE should be a high-useCount code generated via the admin API.
                 inviteCode: process.env.EPDS_INVITE_CODE,
@@ -193,131 +171,36 @@ async function main() {
             did = account.sub
             logger.info({ did, email, handle }, 'Created account (epds-setup)')
             break
-          } catch (createErr: unknown) {
-            if (attempt === 2) throw createErr
+          } catch (err: unknown) {
+            if (attempt === 2) throw err
             logger.warn(
-              { err: createErr, attempt },
+              { err, attempt },
               'Account creation attempt failed, retrying',
             )
           }
         }
       }
 
-      // Step 5: Bind account to device session (for future SSO)
-      await provider.accountManager.upsertDeviceAccount(deviceId, account.sub)
-
-      // Phase B — Render stock consent page
-
-      // Step 6: Call provider.authorize() to get the authorization result
-      const query = { request_uri: requestUri, client_id: clientId }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- authorize() expects branded types not cleanly exported
-      const result = await (provider as any).authorize(query, {
-        deviceId,
-        deviceMetadata,
-      })
-
-      // Step 7: Handle auto-approve redirect (unlikely with prompt=consent, but handle for correctness)
-      if ('redirect' in result) {
-        const redirectUri = result.parameters?.redirect_uri
-        if (!redirectUri) {
-          res
-            .status(400)
-            .json({ error: 'No redirect_uri in authorization request' })
-          return
-        }
-
-        // Record consent before redirecting
-        const { authorizedClients } = await provider.accountManager.getAccount(
-          account.sub,
-        )
-        const clientData = authorizedClients.get(clientId)
-        if (provider.checkConsentRequired(parameters, clientData)) {
-          const scopes = new Set(clientData?.authorizedScopes)
-          for (const s of parameters.scope?.split(' ') ?? []) scopes.add(s)
-          await provider.accountManager.setAuthorizedClient(account, client, {
-            ...clientData,
-            authorizedScopes: [...scopes],
-          })
-        }
-
-        const redirectUrl = new URL(redirectUri)
-        const responseMode = parameters.response_mode || 'query'
-
-        const redirectParams: [string, string][] = [
-          ['iss', pdsUrl],
-          ['code', result.redirect.code],
-        ]
-        if (parameters.state) {
-          redirectParams.push(['state', parameters.state])
-        }
-
-        if (responseMode === 'fragment') {
-          const fragmentParams = new URLSearchParams()
-          for (const [k, v] of redirectParams) fragmentParams.set(k, v)
-          redirectUrl.hash = fragmentParams.toString()
-        } else {
-          for (const [k, v] of redirectParams)
-            redirectUrl.searchParams.set(k, v)
-        }
-
-        res.setHeader('Cache-Control', 'no-store')
-        res.redirect(303, redirectUrl.toString())
-        logger.info(
-          { did, redirectUri },
-          'Auth code issued (epds-setup auto-approve)',
-        )
-        return
+      if (!did) {
+        throw new Error('Account creation failed — no DID assigned')
       }
 
-      // Step 8: Render the stock @atproto authorization page with the authenticated user pre-selected
-      const patchedResult = {
-        ...result,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- sessions is an internal type from @atproto/oauth-provider
-        sessions: result.sessions.map((s: any) => ({
-          ...s,
-          selected: s.account.sub === did,
-        })),
-      }
+      // Step 5: Link device to account
+      await provider.accountManager.upsertDeviceAccount(deviceId, did)
+
+      // Step 6: Redirect to stock /oauth/authorize
+      // The stock middleware will call server.authorize() which finds our
+      // device session, builds the sessions list (including our account),
+      // and renders the consent page.
+      const authorizeUrl = new URL('/oauth/authorize', pdsUrl)
+      authorizeUrl.searchParams.set('request_uri', requestUri)
+      authorizeUrl.searchParams.set('client_id', clientId)
 
       res.setHeader('Cache-Control', 'no-store')
-      await sendAuthorizePage(
-        req as unknown as http.IncomingMessage,
-        res as unknown as http.ServerResponse,
-        patchedResult,
-      )
-
-      logger.info({ did }, 'Rendered stock consent page (epds-setup)')
+      res.redirect(303, authorizeUrl.toString())
     } catch (err) {
-      logger.error({ err }, 'ePDS setup error')
-
-      // Try to redirect error back to client
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider requestManager not exported
-        const requestData = await (provider.requestManager as any).get(
-          requestUri,
-        )
-        const redirectUri = requestData?.parameters?.redirect_uri
-        if (redirectUri) {
-          const errorUrl = new URL(redirectUri)
-          errorUrl.searchParams.set('error', 'server_error')
-          errorUrl.searchParams.set(
-            'error_description',
-            'Authentication failed',
-          )
-          errorUrl.searchParams.set('iss', pdsUrl)
-          if (requestData.parameters.state) {
-            errorUrl.searchParams.set('state', requestData.parameters.state)
-          }
-          res.redirect(303, errorUrl.toString())
-          return
-        }
-      } catch {
-        // Fall through
-      }
-
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Authentication failed' })
-      }
+      logger.error({ err }, 'epds-setup failed')
+      res.status(500).json({ error: 'Internal server error' })
     }
   })
 
