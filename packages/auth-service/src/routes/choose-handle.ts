@@ -149,6 +149,25 @@ export function createChooseHandleRouter(
       return
     }
 
+    // Reset the PAR request inactivity timer so it doesn't expire while the
+    // user is on this page. atproto's AUTHORIZATION_INACTIVITY_TIMEOUT is 5 min
+    // — without this ping, users who take >5 min to pick a handle would hit
+    // "This request has expired" inside epds-callback after account creation.
+    try {
+      await fetch(
+        `${pdsUrl}/_internal/ping-request?request_uri=${encodeURIComponent(result.flow.requestUri)}`,
+        {
+          headers: { 'x-internal-secret': internalSecret },
+          signal: AbortSignal.timeout(3000),
+        },
+      )
+    } catch (err) {
+      logger.debug(
+        { err },
+        'Failed to ping request_uri on choose-handle — ignoring',
+      )
+    }
+
     const error = req.query.error as string | undefined
     res
       .type('html')

@@ -471,6 +471,40 @@ async function main() {
     }
   })
 
+  // Protected internal endpoint for auth service to reset the inactivity timer
+  // on a pending PAR request_uri. Called when the user loads the handle selection
+  // page so the request doesn't expire while they are choosing a handle.
+  // atproto's AUTHORIZATION_INACTIVITY_TIMEOUT is 5 minutes — without this ping,
+  // users who take >5 min on the handle page would get "This request has expired"
+  // inside epds-callback after account creation, leaving the auth flow broken.
+  pds.app.get('/_internal/ping-request', async (req, res) => {
+    if (!verifyInternalSecret(req.headers['x-internal-secret'])) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+    const requestUri = ((req.query.request_uri as string) || '').trim()
+    if (!requestUri) {
+      res.status(400).json({ error: 'Missing request_uri' })
+      return
+    }
+    if (!provider) {
+      res.status(503).json({ error: 'OAuth provider not available' })
+      return
+    }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider requestManager not exported
+      await (provider.requestManager as any).get(requestUri)
+      res.json({ ok: true })
+    } catch (err) {
+      // Request expired or not found — not a server error, just report it
+      logger.debug(
+        { err, requestUri },
+        'ping-request: request_uri expired or not found',
+      )
+      res.status(404).json({ error: 'request_expired' })
+    }
+  })
+
   // Protected internal endpoint for auth service to retrieve the login_hint
   // stored in a PAR request. Third-party apps put the handle/DID in the PAR body
   // but don't duplicate it on the authorization redirect URL. The auth service
