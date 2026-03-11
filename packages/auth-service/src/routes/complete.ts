@@ -5,23 +5,20 @@
  * (this is the `callbackURL` passed to better-auth sign-in methods).
  *
  * Translates a better-auth session into an HMAC-signed redirect to
- * pds-core's /oauth/epds-callback, threading the AT Protocol request_uri
+ * pds-core's /oauth/epds-setup, threading the AT Protocol request_uri
  * through the flow via the auth_flow table.
  *
  * Flow:
  *   1. Read epds_auth_flow cookie → get flow_id
  *   2. Look up auth_flow row → get request_uri, client_id
  *   3. Get better-auth session → extract verified email
- *   4. Check if consent needed (first-time client login for existing accounts)
- *   5a. Needs consent → redirect to /auth/consent?flow_id=...
- *   5b. No consent needed → build HMAC-signed redirect to pds-core /oauth/epds-callback
- *   6. Delete auth_flow row + clear cookie
+ *   4. Delete auth_flow row + clear cookie
+ *   5. Build HMAC-signed redirect to pds-core /oauth/epds-setup
  */
 import { Router, type Request, type Response } from 'express'
 import type { AuthServiceContext } from '../context.js'
 import { createLogger, signCallback } from '@certified-app/shared'
 import { fromNodeHeaders } from 'better-auth/node'
-import { getDidByEmail } from '../lib/get-did-by-email.js'
 
 const logger = createLogger('auth:complete')
 
@@ -84,57 +81,25 @@ export function createCompleteRouter(
 
     const email = session.user.email.toLowerCase()
 
-    // Step 4: Check whether this is a new account and whether consent is needed.
-    // Consent is required for existing accounts logging into a new client for the first time.
-    // New accounts (no PDS account yet) skip consent since account creation implies consent.
-    const pdsUrl = process.env.PDS_INTERNAL_URL || ctx.config.pdsPublicUrl
-    const internalSecret = process.env.EPDS_INTERNAL_SECRET ?? ''
-    const did = await getDidByEmail(email, pdsUrl, internalSecret)
-    const isNewAccount = !did
-
-    const clientId = flow.clientId ?? ''
-    const needsConsent = clientId && !ctx.db.hasClientLogin(email, clientId)
-
-    if (needsConsent) {
-      // Step 5a: Redirect to consent screen, passing flow_id so consent can
-      // look up request_uri and perform cleanup itself.
-      // Do NOT delete auth_flow or clear cookie here — consent does it.
-      const consentUrl = new URL(
-        '/auth/consent',
-        `https://${ctx.config.hostname}`,
-      )
-      consentUrl.searchParams.set('flow_id', flowId)
-      consentUrl.searchParams.set('email', email)
-      consentUrl.searchParams.set('new', '0')
-      res.redirect(303, consentUrl.pathname + consentUrl.search)
-      return
-    }
-
-    // Step 5: Record client login before redirecting (no consent needed)
-    ctx.db.recordClientLogin(email, clientId || 'better-auth')
-
-    // Cleanup: remove auth_flow row and cookie
+    // Step 4: Cleanup auth_flow row and cookie
     ctx.db.deleteAuthFlow(flowId)
     res.clearCookie(AUTH_FLOW_COOKIE)
 
-    // Step 5b: Build HMAC-signed redirect to pds-core /oauth/epds-callback
+    // Step 5: Build HMAC-signed redirect to pds-core /oauth/epds-setup
     const callbackParams = {
       request_uri: flow.requestUri,
       email,
       approved: '1',
-      new_account: isNewAccount ? '1' : '0',
+      new_account: '0',
     }
     const { sig, ts } = signCallback(
       callbackParams,
       ctx.config.epdsCallbackSecret,
     )
     const params = new URLSearchParams({ ...callbackParams, ts, sig })
-    const redirectUrl = `${ctx.config.pdsPublicUrl}/oauth/epds-callback?${params.toString()}`
+    const redirectUrl = `${ctx.config.pdsPublicUrl}/oauth/epds-setup?${params.toString()}`
 
-    logger.info(
-      { email, flowId, isNewAccount },
-      'Bridge: redirecting to epds-callback',
-    )
+    logger.info({ email, flowId }, 'Bridge: redirecting to epds-setup')
     res.redirect(303, redirectUrl)
   })
 
