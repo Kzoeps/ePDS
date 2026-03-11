@@ -25,6 +25,12 @@ import {
   verifyCallback,
 } from '@certified-app/shared'
 
+// Internal import — pinned to @atproto/oauth-provider@^0.15.x
+// Must be verified on @atproto version bumps.
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — internal module, no type declarations exported
+import { sendAuthorizePageFactory } from '@atproto/oauth-provider/dist/router/assets/send-authorization-page.js'
+
 const logger = createLogger('pds-core')
 
 async function main() {
@@ -57,6 +63,263 @@ async function main() {
 
   const epdsCallbackSecret =
     process.env.EPDS_CALLBACK_SECRET || 'dev-callback-secret-change-me'
+
+  // Initialize the stock @atproto consent page renderer (used by epds-setup)
+  const issuerUrl = new URL(pdsUrl)
+  const sendAuthorizePage = provider
+    ? // eslint-disable-next-line @typescript-eslint/no-explicit-any -- sendAuthorizePageFactory is from an internal module with no type declarations
+      sendAuthorizePageFactory((provider as any).customization, {
+        hsts: issuerUrl.protocol === 'http:' ? false : undefined,
+      })
+    : null
+
+  // =========================================================================
+  // EPDS SETUP - Renders stock @atproto consent page after OTP verification
+  // =========================================================================
+  //
+  // Called by auth-service after OTP verification (replaces old consent page flow).
+  // Phase A: Verify HMAC signature, load device, resolve/create account, link device.
+  // Phase B: Call provider.authorize() and render the stock @atproto consent page,
+  //          with the authenticated user pre-selected in the sessions list.
+
+  pds.app.get('/oauth/epds-setup', async (req, res) => {
+    // We use `as any` casts for branded OAuth types (RequestUri, Code, etc.)
+    // since these internal types aren't cleanly exported from @atproto/oauth-provider.
+
+    const requestUri = req.query.request_uri as string
+    const email = ((req.query.email as string) || '').toLowerCase()
+    const ts = req.query.ts as string
+    const sig = req.query.sig as string
+
+    // Phase A — validate params
+    if (!requestUri || !email) {
+      res.status(400).json({ error: 'Missing required parameters' })
+      return
+    }
+
+    if (!ts || !sig) {
+      res.status(403).json({ error: 'Missing signature' })
+      return
+    }
+
+    // Verify HMAC-SHA256 signature before performing any account operations.
+    // auth-service still sends approved and new_account for HMAC compatibility.
+    const newAccountStr = req.query.new_account as string
+    const signatureValid = verifyCallback(
+      {
+        request_uri: requestUri,
+        email,
+        approved: '1',
+        new_account: newAccountStr,
+      },
+      ts,
+      sig,
+      epdsCallbackSecret,
+    )
+
+    if (!signatureValid) {
+      // Distinguish expired from invalid to help with clock-skew debugging
+      const tsNum = parseInt(ts, 10)
+      const age = Math.floor(Date.now() / 1000) - tsNum
+      if (!isNaN(tsNum) && age > 5 * 60) {
+        res.status(400).json({ error: 'Callback signature expired' })
+      } else {
+        res.status(403).json({ error: 'Invalid callback signature' })
+      }
+      return
+    }
+
+    if (!provider || !sendAuthorizePage) {
+      res.status(500).json({ error: 'OAuth provider not configured' })
+      return
+    }
+
+    let did: string | undefined
+
+    try {
+      // Step 1: Load or create device session
+      const deviceInfo = await provider.deviceManager.load(
+        req as unknown as http.IncomingMessage,
+        res as unknown as http.ServerResponse,
+      )
+      const { deviceId, deviceMetadata } = deviceInfo
+
+      // Step 2: Get the pending authorization request
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider requestManager not exported
+      const requestData = await (provider.requestManager as any).get(
+        requestUri,
+        deviceId,
+      )
+      const { clientId, parameters } = requestData
+
+      // Step 3: Get the client (needed by sendAuthorizePage for metadata/trust info)
+      const client = await provider.clientManager.getClient(clientId)
+
+      // Step 4: Resolve or create the account.
+      const existingAccount =
+        await pds.ctx.accountManager.getAccountByEmail(email)
+      did = existingAccount?.did
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider Account type not exported
+      let account: any
+
+      if (did) {
+        // Existing account
+        const accountData = await provider.accountManager.getAccount(did)
+        account = accountData.account
+      } else {
+        // New account - create via the OAuthProvider's sign-up mechanism
+        // Retry up to 3 times in case of handle collision
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const handle = generateRandomHandle(handleDomain)
+            account = await provider.accountManager.createAccount(
+              deviceId,
+              deviceMetadata,
+              {
+                locale: 'en',
+                handle,
+                email,
+                // Use a random unguessable password so the PDS creates a proper account
+                // row (registerAccount requires a password). The password is never
+                // returned or stored anywhere accessible, so the account is effectively
+                // passwordless — login is only possible via the magic OTP flow.
+                password: randomBytes(32).toString('hex'),
+                // Invite code is required when PDS_INVITE_REQUIRED is true (the default).
+                // EPDS_INVITE_CODE should be a high-useCount code generated via the admin API.
+                inviteCode: process.env.EPDS_INVITE_CODE,
+              },
+            )
+            did = account.sub
+            logger.info({ did, email, handle }, 'Created account (epds-setup)')
+            break
+          } catch (createErr: unknown) {
+            if (attempt === 2) throw createErr
+            logger.warn(
+              { err: createErr, attempt },
+              'Account creation attempt failed, retrying',
+            )
+          }
+        }
+      }
+
+      // Step 5: Bind account to device session (for future SSO)
+      await provider.accountManager.upsertDeviceAccount(deviceId, account.sub)
+
+      // Phase B — Render stock consent page
+
+      // Step 6: Call provider.authorize() to get the authorization result
+      const query = { request_uri: requestUri, client_id: clientId }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- authorize() expects branded types not cleanly exported
+      const result = await (provider as any).authorize(query, {
+        deviceId,
+        deviceMetadata,
+      })
+
+      // Step 7: Handle auto-approve redirect (unlikely with prompt=consent, but handle for correctness)
+      if ('redirect' in result) {
+        const redirectUri = result.parameters?.redirect_uri
+        if (!redirectUri) {
+          res
+            .status(400)
+            .json({ error: 'No redirect_uri in authorization request' })
+          return
+        }
+
+        // Record consent before redirecting
+        const { authorizedClients } = await provider.accountManager.getAccount(
+          account.sub,
+        )
+        const clientData = authorizedClients.get(clientId)
+        if (provider.checkConsentRequired(parameters, clientData)) {
+          const scopes = new Set(clientData?.authorizedScopes)
+          for (const s of parameters.scope?.split(' ') ?? []) scopes.add(s)
+          await provider.accountManager.setAuthorizedClient(account, client, {
+            ...clientData,
+            authorizedScopes: [...scopes],
+          })
+        }
+
+        const redirectUrl = new URL(redirectUri)
+        const responseMode = parameters.response_mode || 'query'
+
+        const redirectParams: [string, string][] = [
+          ['iss', pdsUrl],
+          ['code', result.redirect.code],
+        ]
+        if (parameters.state) {
+          redirectParams.push(['state', parameters.state])
+        }
+
+        if (responseMode === 'fragment') {
+          const fragmentParams = new URLSearchParams()
+          for (const [k, v] of redirectParams) fragmentParams.set(k, v)
+          redirectUrl.hash = fragmentParams.toString()
+        } else {
+          for (const [k, v] of redirectParams)
+            redirectUrl.searchParams.set(k, v)
+        }
+
+        res.setHeader('Cache-Control', 'no-store')
+        res.redirect(303, redirectUrl.toString())
+        logger.info(
+          { did, redirectUri },
+          'Auth code issued (epds-setup auto-approve)',
+        )
+        return
+      }
+
+      // Step 8: Render the stock @atproto authorization page with the authenticated user pre-selected
+      const patchedResult = {
+        ...result,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- sessions is an internal type from @atproto/oauth-provider
+        sessions: result.sessions.map((s: any) => ({
+          ...s,
+          selected: s.account.sub === did,
+        })),
+      }
+
+      res.setHeader('Cache-Control', 'no-store')
+      await sendAuthorizePage(
+        req as unknown as http.IncomingMessage,
+        res as unknown as http.ServerResponse,
+        patchedResult,
+      )
+
+      logger.info({ did }, 'Rendered stock consent page (epds-setup)')
+    } catch (err) {
+      logger.error({ err }, 'ePDS setup error')
+
+      // Try to redirect error back to client
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider requestManager not exported
+        const requestData = await (provider.requestManager as any).get(
+          requestUri,
+        )
+        const redirectUri = requestData?.parameters?.redirect_uri
+        if (redirectUri) {
+          const errorUrl = new URL(redirectUri)
+          errorUrl.searchParams.set('error', 'server_error')
+          errorUrl.searchParams.set(
+            'error_description',
+            'Authentication failed',
+          )
+          errorUrl.searchParams.set('iss', pdsUrl)
+          if (requestData.parameters.state) {
+            errorUrl.searchParams.set('state', requestData.parameters.state)
+          }
+          res.redirect(303, errorUrl.toString())
+          return
+        }
+      } catch {
+        // Fall through
+      }
+
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Authentication failed' })
+      }
+    }
+  })
 
   pds.app.get('/oauth/epds-callback', async (req, res) => {
     // We use `as any` casts for branded OAuth types (RequestUri, Code, etc.)
