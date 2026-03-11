@@ -65,7 +65,6 @@ async function main() {
     const requestUri = req.query.request_uri as string
     const email = ((req.query.email as string) || '').toLowerCase()
     const approved = req.query.approved === '1'
-    const _isNewAccount = req.query.new_account === '1'
     const ts = req.query.ts as string
     const sig = req.query.sig as string
 

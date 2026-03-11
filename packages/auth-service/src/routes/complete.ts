@@ -93,8 +93,7 @@ export function createCompleteRouter(
     const isNewAccount = !did
 
     const clientId = flow.clientId ?? ''
-    const needsConsent =
-      !isNewAccount && clientId && !ctx.db.hasClientLogin(email, clientId)
+    const needsConsent = clientId && !ctx.db.hasClientLogin(email, clientId)
 
     if (needsConsent) {
       // Step 5a: Redirect to consent screen, passing flow_id so consent can
