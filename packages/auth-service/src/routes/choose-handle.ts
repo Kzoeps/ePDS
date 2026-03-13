@@ -36,8 +36,11 @@ export function createChooseHandleRouter(
 ): Router {
   const router = Router()
 
-  const pdsUrl = process.env.PDS_INTERNAL_URL || ctx.config.pdsPublicUrl
-  const internalSecret = process.env.EPDS_INTERNAL_SECRET ?? ''
+  const pdsUrl = process.env.PDS_INTERNAL_URL
+  const internalSecret = process.env.EPDS_INTERNAL_SECRET
+  if (!pdsUrl || !internalSecret) {
+    throw new Error('PDS_INTERNAL_URL and EPDS_INTERNAL_SECRET must be set')
+  }
   const handleDomain = ctx.config.pdsHostname
 
   /**
@@ -131,18 +134,31 @@ export function createChooseHandleRouter(
     // — without this ping, users who take >5 min to pick a handle would hit
     // "This request has expired" inside epds-callback after account creation.
     try {
-      await fetch(
+      const pingRes = await fetch(
         `${pdsUrl}/_internal/ping-request?request_uri=${encodeURIComponent(result.flow.requestUri)}`,
         {
           headers: { 'x-internal-secret': internalSecret },
           signal: AbortSignal.timeout(3000),
         },
       )
+      if (!pingRes.ok) {
+        logger.warn(
+          { status: pingRes.status, requestUri: result.flow.requestUri },
+          'Failed to extend request_uri on choose-handle',
+        )
+        res
+          .status(400)
+          .type('html')
+          .send(renderError('Session expired, please start over'))
+        return
+      }
     } catch (err) {
-      logger.debug(
-        { err },
-        'Failed to ping request_uri on choose-handle — ignoring',
-      )
+      logger.warn({ err }, 'Failed to ping request_uri on choose-handle')
+      res
+        .status(400)
+        .type('html')
+        .send(renderError('Session expired, please start over'))
+      return
     }
 
     const error = req.query.error as string | undefined
@@ -1079,6 +1095,15 @@ function renderChooseHandlePage(
           checkAvailability(raw);
         }, 500);
       });
+
+      // Disable button for the duration of the POST to prevent double-submit
+      var form = document.getElementById('handle-form');
+      if (form) {
+        form.addEventListener('submit', function() {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Creating\u2026';
+        });
+      }
 
       // Hide server-rendered error once user starts typing
       input.addEventListener('input', function() {
