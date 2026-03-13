@@ -317,9 +317,10 @@ export function createChooseHandleRouter(
     )
     const params = new URLSearchParams({ ...callbackParams, ts, sig })
 
-    // Step 6: Cleanup — delete auth_flow row and clear cookie
-    ctx.db.deleteAuthFlow(flowId)
-    res.clearCookie(AUTH_FLOW_COOKIE)
+    // auth_flow row and cookie are intentionally kept alive here.
+    // If pds-core redirects back with ?error=handle_taken, the user still has
+    // their session and can retry with a different handle. Stale rows are
+    // cleaned up by cleanupExpiredAuthFlows() every 5 minutes (10-min TTL).
 
     logger.info(
       { email, flowId, fullHandle },
