@@ -17,12 +17,8 @@ describe('HANDLE_REGEX — valid handles', () => {
     expect(HANDLE_REGEX.test('my-handle')).toBe(true)
   })
 
-  it('accepts a handle with digits', () => {
-    expect(HANDLE_REGEX.test('a1b')).toBe(true)
-  })
-
-  it('accepts a 3-character handle', () => {
-    expect(HANDLE_REGEX.test('abc')).toBe(true)
+  it('accepts a 5-character handle (min length)', () => {
+    expect(HANDLE_REGEX.test('abcde')).toBe(true)
   })
 
   it('accepts a 20-character handle (max length)', () => {
@@ -47,6 +43,14 @@ describe('HANDLE_REGEX — invalid handles', () => {
     expect(HANDLE_REGEX.test('ab')).toBe(false)
   })
 
+  it('rejects a 3-character handle (too short)', () => {
+    expect(HANDLE_REGEX.test('abc')).toBe(false)
+  })
+
+  it('rejects a 4-character handle (too short)', () => {
+    expect(HANDLE_REGEX.test('abcd')).toBe(false)
+  })
+
   it('rejects a handle starting with a hyphen', () => {
     expect(HANDLE_REGEX.test('-abc')).toBe(false)
   })
@@ -56,7 +60,7 @@ describe('HANDLE_REGEX — invalid handles', () => {
   })
 
   it('rejects uppercase letters', () => {
-    expect(HANDLE_REGEX.test('ABC')).toBe(false)
+    expect(HANDLE_REGEX.test('ALICE')).toBe(false)
   })
 
   it('rejects mixed case', () => {
@@ -64,7 +68,7 @@ describe('HANDLE_REGEX — invalid handles', () => {
   })
 
   it('rejects a handle with a space', () => {
-    expect(HANDLE_REGEX.test('a b')).toBe(false)
+    expect(HANDLE_REGEX.test('my name')).toBe(false)
   })
 
   it('rejects an empty string', () => {
@@ -76,7 +80,7 @@ describe('HANDLE_REGEX — invalid handles', () => {
   })
 
   it('rejects a handle with special characters', () => {
-    expect(HANDLE_REGEX.test('abc!')).toBe(false)
+    expect(HANDLE_REGEX.test('hello!')).toBe(false)
   })
 
   it('rejects a handle with dots', () => {

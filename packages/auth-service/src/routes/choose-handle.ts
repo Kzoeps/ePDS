@@ -24,8 +24,8 @@ const logger = createLogger('auth:choose-handle')
 
 const AUTH_FLOW_COOKIE = 'epds_auth_flow'
 
-/** Regex for valid handle local parts: 3-20 chars, lowercase alphanumeric + hyphens, no leading/trailing hyphen */
-export const HANDLE_REGEX = /^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$/
+/** Regex for valid handle local parts: 5-20 chars, lowercase alphanumeric + hyphens, no leading/trailing hyphen */
+export const HANDLE_REGEX = /^[a-z0-9][a-z0-9-]{3,18}[a-z0-9]$/
 
 /** Reserved handles that cannot be registered */
 export const RESERVED_HANDLES = new Set([
@@ -192,6 +192,50 @@ export function createChooseHandleRouter(
 
     const { flowId, flow, email } = result
 
+    // Guard: if PDS account already exists, bounce back to /auth/complete
+    // (mirrors the same check in the GET handler — prevents signing a
+    // new_account callback for an existing user who somehow reaches this POST)
+    const did = await getDidByEmail(email, pdsUrl, internalSecret)
+    if (did) {
+      logger.info(
+        { email },
+        'Existing user reached POST choose-handle — redirecting to /auth/complete',
+      )
+      res.redirect(303, '/auth/complete')
+      return
+    }
+
+    // Re-ping the PAR request to ensure it hasn't expired while the user was
+    // on the handle picker page. Without this, a user who took >5 min would
+    // get "This request has expired" inside epds-callback after account creation.
+    try {
+      const pingRes = await fetch(
+        `${pdsUrl}/_internal/ping-request?request_uri=${encodeURIComponent(flow.requestUri)}`,
+        {
+          headers: { 'x-internal-secret': internalSecret },
+          signal: AbortSignal.timeout(3000),
+        },
+      )
+      if (!pingRes.ok) {
+        logger.warn(
+          { status: pingRes.status, requestUri: flow.requestUri },
+          'Failed to extend request_uri on POST choose-handle',
+        )
+        res
+          .status(400)
+          .type('html')
+          .send(renderError('Session expired, please start over'))
+        return
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Failed to ping request_uri on POST choose-handle')
+      res
+        .status(400)
+        .type('html')
+        .send(renderError('Session expired, please start over'))
+      return
+    }
+
     // Step 1: Read and normalise the local part
     const rawHandle = ((req.body.handle as string) || '').trim().toLowerCase()
 
@@ -203,7 +247,7 @@ export function createChooseHandleRouter(
         .send(
           renderChooseHandlePage(
             handleDomain,
-            'Invalid handle format. Use 3-20 lowercase letters, numbers, or hyphens.',
+            'Invalid handle format. Use 5-20 lowercase letters, numbers, or hyphens.',
             res.locals.csrfToken,
             ctx.config.brandColor,
             ctx.config.backgroundColor,
@@ -897,7 +941,7 @@ function renderChooseHandlePage(
         <div class="validation-rules" id="validation-rules">
           <div class="validation-rule" id="rule-length">
             <span class="rule-icon" id="rule-length-icon">·</span>
-            <span>Between 3 and 20 characters</span>
+            <span>Between 5 and 20 characters</span>
           </div>
           <div class="validation-rule" id="rule-charset">
             <span class="rule-icon" id="rule-charset-icon">·</span>
@@ -948,7 +992,7 @@ function renderChooseHandlePage(
   <script>
     (function() {
       var HANDLE_DOMAIN = '${escapeHtml(handleDomain)}';
-      var HANDLE_REGEX = /^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$/;
+      var HANDLE_REGEX = /^[a-z0-9][a-z0-9-]{3,18}[a-z0-9]$/;
       var RESERVED = new Set([
         'admin','support','help','abuse','postmaster','root','system',
         'moderator','www','mail','ftp','api','auth','oauth','account',
@@ -991,7 +1035,7 @@ function renderChooseHandlePage(
           setRule(ruleCharsetEl, ruleCharsetIcon, 'neutral');
           return;
         }
-        var validLength = raw.length >= 3 && raw.length <= 20;
+        var validLength = raw.length >= 5 && raw.length <= 20;
         var validCharset = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(raw) || (raw.length >= 1 && /^[a-z0-9]+$/.test(raw));
         var noLeadTrailHyphen = !/^-|-$/.test(raw);
         setRule(ruleLengthEl, ruleLengthIcon, validLength ? 'pass' : 'fail');
@@ -1066,7 +1110,8 @@ function renderChooseHandlePage(
         }
 
         if (!HANDLE_REGEX.test(raw)) {
-          setStatus('3\u201320 characters, letters, numbers, or hyphens. Cannot start or end with a hyphen.', 'format-error');
+          setStatus('5\u201320 characters, letters, numbers, or hyphens. Cannot start or end with a hyphen.', 'format-error');
+          updateSubmit(); // formatValid=false → button disabled
           return;
         }
 
