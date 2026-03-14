@@ -15,9 +15,11 @@
  *   4. Check if this is a new user (no PDS account for email)
  *   5a. New user, handle_mode='random' → HMAC-signed redirect to pds-core (random handle generated server-side)
  *   5b. New user, handle_mode=null|'picker'|'picker-with-random' → redirect to /auth/choose-handle
- *   5c. Existing user, needs consent → redirect to /auth/consent?flow_id=...
- *   5d. Existing user, no consent needed → build HMAC-signed redirect to pds-core /oauth/epds-callback
- *   6. Delete auth_flow row + clear cookie (only for 5d path)
+ *   5c. Existing user → build HMAC-signed redirect to pds-core /oauth/epds-callback
+ *   6. Delete auth_flow row + clear cookie (only for 5c path)
+ *
+ * Note: consent is handled by the stock @atproto/oauth-provider middleware
+ * after pds-core's epds-callback redirects through /oauth/authorize.
  */
 import { Router, type Request, type Response } from 'express'
 import type { AuthServiceContext } from '../context.js'
@@ -90,15 +92,9 @@ export function createCompleteRouter(
 
     const email = session.user.email.toLowerCase()
 
-    // Step 4: Check whether this is a new account.
-    // New accounts (no PDS account yet) are redirected to the handle picker.
-    // Existing accounts may need consent for first-time client logins.
+    // Step 4: Check whether this is a new user (no PDS account for email).
     const did = await getDidByEmail(email, pdsUrl, internalSecret)
     const isNewAccount = !did
-
-    const clientId = flow.clientId ?? ''
-    const needsConsent =
-      !isNewAccount && clientId && !ctx.db.hasClientLogin(email, clientId)
 
     if (isNewAccount) {
       if (flow.handleMode === 'random') {
@@ -164,31 +160,15 @@ export function createCompleteRouter(
       return
     }
 
-    if (needsConsent) {
-      // Step 5c: Redirect to consent screen, passing flow_id so consent can
-      // look up request_uri and perform cleanup itself.
-      // Do NOT delete auth_flow or clear cookie here — consent does it.
-      const consentUrl = new URL(
-        '/auth/consent',
-        `https://${ctx.config.hostname}`,
-      )
-      consentUrl.searchParams.set('flow_id', flowId)
-      consentUrl.searchParams.set('email', email)
-      consentUrl.searchParams.set('new', '0')
-      res.redirect(303, consentUrl.pathname + consentUrl.search)
-      return
-    }
-
-    // Step 5d: Record client login before redirecting (no consent needed, existing user)
-    if (clientId) {
-      ctx.db.recordClientLogin(email, clientId)
-    }
+    // Step 5c (existing user): Build HMAC-signed redirect to pds-core /oauth/epds-callback.
+    // Consent is handled by the stock @atproto/oauth-provider middleware —
+    // pds-core's epds-callback redirects through /oauth/authorize which shows
+    // the upstream consent UI with actual OAuth scopes if needed.
 
     // Cleanup: remove auth_flow row and cookie
     ctx.db.deleteAuthFlow(flowId)
     res.clearCookie(AUTH_FLOW_COOKIE)
 
-    // Step 5d (cont): Build HMAC-signed redirect to pds-core /oauth/epds-callback
     const callbackParams = {
       request_uri: flow.requestUri,
       email,

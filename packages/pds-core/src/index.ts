@@ -153,18 +153,15 @@ async function main() {
       )
       const { deviceId, deviceMetadata } = deviceInfo
 
-      // Step 2: Get the pending authorization request
+      // Step 2: Refresh the PAR request expiry timer.
+      // Call get() WITHOUT deviceId so it doesn't bind one — the stock
+      // oauthMiddleware will bind the browser's deviceId when we redirect
+      // through /oauth/authorize below.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider requestManager not exported
-      const requestData = await (provider.requestManager as any).get(
-        requestUri,
-        deviceId,
-      )
-      const { clientId, parameters } = requestData
+      const requestData = await (provider.requestManager as any).get(requestUri)
+      const { clientId } = requestData
 
-      // Step 3: Get the client
-      const client = await provider.clientManager.getClient(clientId)
-
-      // Step 4: Resolve or create the account.
+      // Step 3: Resolve or create the account.
       // Use the PDS accountManager directly — account.sqlite is the single source of truth.
       // Backup email lookup (recovery flow) is handled by the auth-service before issuing
       // the HMAC-signed callback; by the time we reach here, email is the verified primary.
@@ -288,65 +285,31 @@ async function main() {
         }
       }
 
-      // Step 5: Bind account to device session (for future SSO)
+      // Step 4: Bind account to device session (for future SSO).
+      // This creates a device-account association so that when the stock
+      // oauthMiddleware processes the /oauth/authorize redirect below,
+      // provider.authorize() will find this session and can auto-approve
+      // or show the upstream consent UI with actual scopes.
       await provider.accountManager.upsertDeviceAccount(deviceId, account.sub)
 
-      // Step 6: Issue authorization code
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider requestManager not exported
-      const code = await (provider.requestManager as any).setAuthorized(
-        requestUri,
-        client,
-        account,
-        deviceId,
-        deviceMetadata,
-      )
-
-      // Step 7: Update authorized clients (consent tracking)
-      const { authorizedClients } = await provider.accountManager.getAccount(
-        account.sub,
-      )
-      const clientData = authorizedClients.get(clientId)
-      if (provider.checkConsentRequired(parameters, clientData)) {
-        const scopes = new Set(clientData?.authorizedScopes)
-        for (const s of parameters.scope?.split(' ') ?? []) scopes.add(s)
-        await provider.accountManager.setAuthorizedClient(account, client, {
-          ...clientData,
-          authorizedScopes: [...scopes],
-        })
-      }
-
-      // Step 8: Build redirect URL and send user back to client
-      const redirectUri = parameters.redirect_uri
-      if (!redirectUri) {
-        res
-          .status(400)
-          .json({ error: 'No redirect_uri in authorization request' })
-        return
-      }
-
-      const redirectUrl = new URL(redirectUri)
-      const responseMode = parameters.response_mode || 'query'
-
-      const redirectParams: [string, string][] = [
-        ['iss', pdsUrl],
-        ['code', code],
-      ]
-      if (parameters.state) {
-        redirectParams.push(['state', parameters.state])
-      }
-
-      if (responseMode === 'fragment') {
-        const fragmentParams = new URLSearchParams()
-        for (const [k, v] of redirectParams) fragmentParams.set(k, v)
-        redirectUrl.hash = fragmentParams.toString()
-      } else {
-        for (const [k, v] of redirectParams) redirectUrl.searchParams.set(k, v)
-      }
+      // Step 5: Redirect through the stock /oauth/authorize endpoint.
+      // The oauthMiddleware will call provider.authorize() which:
+      // - Finds the device session we just created via upsertDeviceAccount
+      // - Checks checkConsentRequired() against actual OAuth scopes
+      // - Auto-approves if no consent needed (SSO match, previously authorized scopes)
+      // - Renders the upstream consent UI (consent-view.tsx) if consent is required
+      // This replaces the broken auth-service consent page that had hard-coded permissions.
+      const authorizeUrl = new URL('/oauth/authorize', pdsUrl)
+      authorizeUrl.searchParams.set('request_uri', requestUri)
+      authorizeUrl.searchParams.set('client_id', clientId)
 
       res.setHeader('Cache-Control', 'no-store')
-      res.redirect(303, redirectUrl.toString())
+      res.redirect(303, authorizeUrl.toString())
 
-      logger.info({ did, redirectUri }, 'Auth code issued')
+      logger.info(
+        { did, clientId },
+        'ePDS callback: redirecting to stock /oauth/authorize for consent/approval',
+      )
     } catch (err) {
       logger.error({ err }, 'ePDS callback error')
 
