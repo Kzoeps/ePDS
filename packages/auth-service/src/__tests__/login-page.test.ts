@@ -39,6 +39,7 @@ describe('Login page auth_flow creation', () => {
       flowId,
       requestUri,
       clientId,
+      handleMode: null,
       expiresAt: Date.now() + 10 * 60 * 1000,
     })
 
@@ -55,6 +56,7 @@ describe('Login page auth_flow creation', () => {
       flowId,
       requestUri: 'urn:req:no-client',
       clientId: null,
+      handleMode: null,
       expiresAt: Date.now() + 10 * 60 * 1000,
     })
 
@@ -69,6 +71,7 @@ describe('Login page auth_flow creation', () => {
       flowId,
       requestUri: 'urn:req:expired',
       clientId: null,
+      handleMode: null,
       expiresAt: Date.now() - 1, // immediately expired
     })
 
@@ -82,6 +85,7 @@ describe('Login page auth_flow creation', () => {
         flowId: `expired-${i}`,
         requestUri: `urn:req:${i}`,
         clientId: null,
+        handleMode: null,
         expiresAt: Date.now() - 1000,
       })
     }
@@ -89,6 +93,7 @@ describe('Login page auth_flow creation', () => {
       flowId: 'active-flow',
       requestUri: 'urn:req:active',
       clientId: null,
+      handleMode: null,
       expiresAt: Date.now() + 10 * 60 * 1000,
     })
 
@@ -104,6 +109,7 @@ describe('Login page auth_flow creation', () => {
       flowId,
       requestUri,
       clientId: null,
+      handleMode: null,
       expiresAt: Date.now() + 10 * 60 * 1000,
     })
 
@@ -117,6 +123,7 @@ describe('Login page auth_flow creation', () => {
       flowId: 'idem-expired',
       requestUri: 'urn:ietf:params:oauth:request_uri:idem-expired',
       clientId: null,
+      handleMode: null,
       expiresAt: Date.now() - 1,
     })
 
@@ -141,6 +148,107 @@ describe('Login page auth_flow creation', () => {
       ids.add(randomBytes(16).toString('hex'))
     }
     expect(ids.size).toBe(100)
+  })
+})
+
+describe('Login page handle_mode storage', () => {
+  let db: EpdsDb
+  let dbPath: string
+
+  beforeEach(() => {
+    dbPath = path.join(os.tmpdir(), `test-handle-mode-${Date.now()}.db`)
+    db = new EpdsDb(dbPath)
+  })
+
+  afterEach(() => {
+    db.close()
+    try {
+      fs.unlinkSync(dbPath)
+      // eslint-disable-next-line no-empty
+    } catch {}
+  })
+
+  it('stores "random" handle mode when provided', () => {
+    db.createAuthFlow({
+      flowId: 'hm-random',
+      requestUri: 'urn:req:hm-random',
+      clientId: null,
+      handleMode: 'random',
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    })
+    const flow = db.getAuthFlow('hm-random')
+    expect(flow!.handleMode).toBe('random')
+  })
+
+  it('stores "picker" handle mode when provided', () => {
+    db.createAuthFlow({
+      flowId: 'hm-picker',
+      requestUri: 'urn:req:hm-picker',
+      clientId: null,
+      handleMode: 'picker',
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    })
+    const flow = db.getAuthFlow('hm-picker')
+    expect(flow!.handleMode).toBe('picker')
+  })
+
+  it('stores "picker-with-random" handle mode when provided', () => {
+    db.createAuthFlow({
+      flowId: 'hm-picker-random',
+      requestUri: 'urn:req:hm-picker-random',
+      clientId: null,
+      handleMode: 'picker-with-random',
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    })
+    const flow = db.getAuthFlow('hm-picker-random')
+    expect(flow!.handleMode).toBe('picker-with-random')
+  })
+
+  it('stores null handle mode when not provided (default random behavior)', () => {
+    db.createAuthFlow({
+      flowId: 'hm-null',
+      requestUri: 'urn:req:hm-null',
+      clientId: null,
+      handleMode: null,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    })
+    const flow = db.getAuthFlow('hm-null')
+    expect(flow!.handleMode).toBeNull()
+  })
+
+  it('validates that only known handle modes are accepted (unknown → null)', () => {
+    // Simulate login-page.ts validation logic
+    const VALID_HANDLE_MODES = [
+      'random',
+      'picker',
+      'picker-with-random',
+    ] as const
+    type HandleMode = (typeof VALID_HANDLE_MODES)[number]
+
+    const validate = (raw: string | undefined): HandleMode | null =>
+      raw !== undefined &&
+      (VALID_HANDLE_MODES as readonly string[]).includes(raw)
+        ? (raw as HandleMode)
+        : null
+
+    expect(validate('random')).toBe('random')
+    expect(validate('picker')).toBe('picker')
+    expect(validate('picker-with-random')).toBe('picker-with-random')
+    expect(validate('unknown-mode')).toBeNull()
+    expect(validate('')).toBeNull()
+    expect(validate(undefined)).toBeNull()
+  })
+
+  it('getAuthFlowByRequestUri also returns handleMode', () => {
+    db.createAuthFlow({
+      flowId: 'hm-by-uri',
+      requestUri: 'urn:req:hm-by-uri',
+      clientId: null,
+      handleMode: 'picker',
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    })
+    const flow = db.getAuthFlowByRequestUri('urn:req:hm-by-uri')
+    expect(flow!.handleMode).toBe('picker')
   })
 })
 

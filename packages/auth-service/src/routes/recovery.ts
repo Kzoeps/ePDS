@@ -87,6 +87,7 @@ export function createRecoveryRouter(
             flowId,
             requestUri,
             clientId: null,
+            handleMode: null,
             expiresAt: Date.now() + 10 * 60 * 1000,
           })
           res.cookie(AUTH_FLOW_COOKIE, flowId, {

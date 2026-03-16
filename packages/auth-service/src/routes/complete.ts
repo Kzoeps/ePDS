@@ -10,11 +10,12 @@
  *
  * Flow:
  *   1. Read epds_auth_flow cookie → get flow_id
- *   2. Look up auth_flow row → get request_uri, client_id
+ *   2. Look up auth_flow row → get request_uri, client_id, handle_mode
  *   3. Get better-auth session → extract verified email
  *   4. Check if consent needed (first-time client login for existing accounts)
  *   5a. Needs consent → redirect to /auth/consent?flow_id=...
- *   5b. No consent needed → build HMAC-signed redirect to pds-core /oauth/epds-callback
+ *   5b. handle_mode is 'picker' or 'picker-with-random' → redirect to /auth/choose-handle
+ *   5c. No consent needed, random/null mode → build HMAC-signed redirect to pds-core /oauth/epds-callback
  *   6. Delete auth_flow row + clear cookie
  */
 import { Router, type Request, type Response } from 'express'
@@ -111,7 +112,16 @@ export function createCompleteRouter(
       return
     }
 
-    // Step 5: Record client login before redirecting (no consent needed)
+    // Step 5b: If handle mode requires user to pick a handle, redirect to the
+    // handle picker. The auth_flow row is kept alive — choose-handle will clean up.
+    const handleMode = flow.handleMode
+    if (handleMode === 'picker' || handleMode === 'picker-with-random') {
+      const chooseHandleUrl = `/auth/choose-handle?flow_id=${encodeURIComponent(flowId)}&email=${encodeURIComponent(email)}`
+      res.redirect(303, chooseHandleUrl)
+      return
+    }
+
+    // Step 5c: Record client login before redirecting (no consent needed, random/null mode)
     ctx.db.recordClientLogin(email, clientId || 'better-auth')
 
     // Cleanup: remove auth_flow row and cookie

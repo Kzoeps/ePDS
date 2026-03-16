@@ -92,6 +92,7 @@ describe('Recovery flow: auth_flow creation for request_uri threading', () => {
       flowId,
       requestUri,
       clientId: null,
+      handleMode: null,
       expiresAt: Date.now() + 10 * 60 * 1000,
     })
 
@@ -109,6 +110,7 @@ describe('Recovery flow: auth_flow creation for request_uri threading', () => {
       flowId,
       requestUri,
       clientId: null,
+      handleMode: null,
       expiresAt: Date.now() + 10 * 60 * 1000,
     })
 
@@ -167,9 +169,10 @@ describe('Recovery flow: /auth/complete bridge integration', () => {
     const requestUri = 'urn:ietf:params:oauth:request_uri:bridge-test'
 
     db.createAuthFlow({
-      flowId,
-      requestUri,
+      flowId: 'recovery-complete-flow',
+      requestUri: 'urn:ietf:params:oauth:request_uri:bridge-test',
       clientId: null,
+      handleMode: null,
       expiresAt: Date.now() + 10 * 60 * 1000,
     })
 

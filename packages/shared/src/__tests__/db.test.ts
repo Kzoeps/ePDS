@@ -167,6 +167,7 @@ describe('Auth Flow Operations', () => {
       flowId: 'flow-1',
       requestUri: 'urn:ietf:params:oauth:request_uri:abc123',
       clientId: 'https://app.example/client',
+      handleMode: null,
       expiresAt: Date.now() + 600_000, // 10 min
     })
 
@@ -182,6 +183,7 @@ describe('Auth Flow Operations', () => {
       flowId: 'flow-expired',
       requestUri: 'urn:ietf:params:oauth:request_uri:expired',
       clientId: null,
+      handleMode: null,
       expiresAt: Date.now() - 1000, // already expired
     })
 
@@ -193,6 +195,7 @@ describe('Auth Flow Operations', () => {
       flowId: 'flow-delete',
       requestUri: 'urn:ietf:params:oauth:request_uri:delete',
       clientId: null,
+      handleMode: null,
       expiresAt: Date.now() + 600_000,
     })
 
@@ -205,6 +208,7 @@ describe('Auth Flow Operations', () => {
       flowId: 'flow-cleanup',
       requestUri: 'urn:ietf:params:oauth:request_uri:cleanup',
       clientId: null,
+      handleMode: null,
       expiresAt: Date.now() - 1000,
     })
 

@@ -114,6 +114,7 @@ describe('Consent route logic', () => {
         flowId: 'flow-abc',
         requestUri: 'urn:ietf:params:oauth:request_uri:test',
         clientId: 'https://client.example.com',
+        handleMode: null,
         expiresAt: Date.now() + 5 * 60 * 1000,
       })
 
@@ -132,6 +133,7 @@ describe('Consent route logic', () => {
         flowId: 'expired-flow',
         requestUri: 'urn:ietf:params:oauth:request_uri:expired',
         clientId: null,
+        handleMode: null,
         expiresAt: Date.now() - 1000, // already expired
       })
 
@@ -143,6 +145,7 @@ describe('Consent route logic', () => {
         flowId: 'delete-me',
         requestUri: 'urn:ietf:params:oauth:request_uri:delete',
         clientId: null,
+        handleMode: null,
         expiresAt: Date.now() + 5 * 60 * 1000,
       })
 
@@ -223,6 +226,7 @@ describe('Consent route logic', () => {
         flowId: 'get-flow',
         requestUri: 'urn:ietf:params:oauth:request_uri:get-test',
         clientId: 'https://app.example.com',
+        handleMode: null,
         expiresAt: Date.now() + 5 * 60 * 1000,
       })
 
@@ -243,6 +247,7 @@ describe('Consent route logic', () => {
         flowId: 'post-flow',
         requestUri: 'urn:ietf:params:oauth:request_uri:post-test',
         clientId: null,
+        handleMode: null,
         expiresAt: Date.now() + 5 * 60 * 1000,
       })
 

@@ -38,6 +38,7 @@ describe('sendVerificationOTP client branding via auth_flow', () => {
       flowId: 'otp-branding-flow',
       requestUri: 'urn:ietf:params:oauth:request_uri:otp-test',
       clientId: 'https://branded-app.example.com',
+      handleMode: null,
       expiresAt: Date.now() + 5 * 60 * 1000,
     })
 
@@ -68,6 +69,7 @@ describe('sendVerificationOTP client branding via auth_flow', () => {
       flowId: 'expired-otp-flow',
       requestUri: 'urn:ietf:params:oauth:request_uri:expired',
       clientId: 'https://branded-app.example.com',
+      handleMode: null,
       expiresAt: Date.now() - 1000, // already expired
     })
 
@@ -82,6 +84,7 @@ describe('sendVerificationOTP client branding via auth_flow', () => {
       flowId: 'no-client-flow',
       requestUri: 'urn:ietf:params:oauth:request_uri:no-client',
       clientId: null,
+      handleMode: null,
       expiresAt: Date.now() + 5 * 60 * 1000,
     })
 
@@ -100,6 +103,7 @@ describe('sendVerificationOTP client branding via auth_flow', () => {
       flowId: 'brand-test-flow',
       requestUri: 'urn:ietf:params:oauth:request_uri:brand-test',
       clientId: 'https://myapp.example.com',
+      handleMode: null,
       expiresAt: Date.now() + 5 * 60 * 1000,
     })
 
