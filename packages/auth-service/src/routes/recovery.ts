@@ -18,6 +18,7 @@ import { Router, type Request, type Response } from 'express'
 import type { AuthServiceContext } from '../context.js'
 import { createLogger } from '@certified-app/shared'
 import { escapeHtml, maskEmail } from '@certified-app/shared'
+import { buildOtpInputProps } from '../otp-input.js'
 
 const logger = createLogger('auth:recovery')
 
@@ -246,6 +247,7 @@ function renderOtpForm(opts: {
   const maskedEmail = maskEmail(opts.email)
   const encodedUri = encodeURIComponent(opts.requestUri)
   const article = /^[aeiou]/i.test(opts.otpLength.toString()) ? 'an' : 'a'
+  const inputProps = buildOtpInputProps(opts.otpLength, opts.otpCharset)
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -266,9 +268,14 @@ function renderOtpForm(opts: {
       <input type="hidden" name="email" value="${escapeHtml(opts.email)}">
       <div class="field">
         <input type="text" id="code" name="code" required autofocus
-               maxlength="${opts.otpLength}" pattern="${opts.otpCharset === 'alphanumeric' ? `[A-Za-z0-9]{${opts.otpLength}}` : `[0-9]{${opts.otpLength}}`}" inputmode="${opts.otpCharset === 'alphanumeric' ? 'text' : 'numeric'}" autocomplete="one-time-code"
-               ${opts.otpCharset === 'alphanumeric' ? 'autocapitalize="characters"' : 'autocapitalize="off"'}
-               placeholder="${opts.otpCharset === 'alphanumeric' ? 'X'.repeat(opts.otpLength) : '0'.repeat(opts.otpLength)}" class="otp-input"
+               maxlength="${opts.otpLength}"
+               pattern="${inputProps.pattern}"
+               inputmode="${inputProps.inputmode}"
+               autocomplete="one-time-code"
+               autocapitalize="${inputProps.autocapitalize}"
+               placeholder="${inputProps.placeholder}"
+               class="otp-input"
+               oninput="this.value=this.value.replace(/[\s-]/g,'')"
                style="letter-spacing: ${Math.max(2, Math.round(32 / opts.otpLength))}px">
       </div>
       <button type="submit" class="btn-primary">Verify</button>

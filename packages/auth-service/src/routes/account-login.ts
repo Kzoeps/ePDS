@@ -17,6 +17,7 @@ import { Router, type Request, type Response } from 'express'
 import { escapeHtml, maskEmail, createLogger } from '@certified-app/shared'
 import { fromNodeHeaders } from 'better-auth/node'
 import type { AuthServiceContext } from '../context.js'
+import { buildOtpInputProps } from '../otp-input.js'
 
 const logger = createLogger('auth:account-login')
 
@@ -73,6 +74,7 @@ export function createAccountLoginRouter(
         email,
         csrfToken: res.locals.csrfToken,
         otpLength: ctx.config.otpLength,
+        otpCharset: ctx.config.otpCharset,
       }),
     )
   })
@@ -88,6 +90,7 @@ export function createAccountLoginRouter(
           email,
           csrfToken: res.locals.csrfToken,
           otpLength: ctx.config.otpLength,
+          otpCharset: ctx.config.otpCharset,
           error: 'Email and code are required.',
         }),
       )
@@ -129,6 +132,7 @@ export function createAccountLoginRouter(
           email,
           csrfToken: res.locals.csrfToken,
           otpLength: ctx.config.otpLength,
+          otpCharset: ctx.config.otpCharset,
           error: errMsg,
         }),
       )
@@ -170,10 +174,12 @@ function renderOtpForm(opts: {
   email: string
   csrfToken: string
   otpLength: number
+  otpCharset: 'numeric' | 'alphanumeric'
   error?: string
 }): string {
   const maskedEmail = maskEmail(opts.email)
   const article = /^[aeiou]/i.test(opts.otpLength.toString()) ? 'an' : 'a'
+  const inputProps = buildOtpInputProps(opts.otpLength, opts.otpCharset)
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -186,15 +192,20 @@ function renderOtpForm(opts: {
 <body>
   <div class="container">
     <h1>Enter your code</h1>
-    <p class="subtitle">We sent ${article} ${opts.otpLength}-digit code to <strong>${escapeHtml(maskedEmail)}</strong></p>
+    <p class="subtitle">We sent ${article} ${opts.otpLength}-${opts.otpCharset === 'alphanumeric' ? 'character' : 'digit'} code to <strong>${escapeHtml(maskedEmail)}</strong></p>
     ${opts.error ? '<p class="error">' + escapeHtml(opts.error) + '</p>' : ''}
     <form method="POST" action="/account/verify-otp">
       <input type="hidden" name="csrf" value="${escapeHtml(opts.csrfToken)}">
       <input type="hidden" name="email" value="${escapeHtml(opts.email)}">
       <div class="field">
         <input type="text" id="otp" name="otp" required autofocus
-               maxlength="${opts.otpLength}" pattern="[0-9]{${opts.otpLength}}" inputmode="numeric" autocomplete="one-time-code"
-               placeholder="${'0'.repeat(opts.otpLength)}" class="otp-input"
+               maxlength="${opts.otpLength}"
+               pattern="${inputProps.pattern}"
+               inputmode="${inputProps.inputmode}"
+               autocomplete="one-time-code"
+               autocapitalize="${inputProps.autocapitalize}"
+               placeholder="${inputProps.placeholder}"
+               class="otp-input"
                style="letter-spacing: ${Math.max(2, Math.round(32 / opts.otpLength))}px">
       </div>
       <button type="submit" class="btn-primary">Verify</button>

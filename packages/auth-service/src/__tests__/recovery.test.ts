@@ -14,6 +14,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as os from 'node:os'
 import { EpdsDb } from '@certified-app/shared'
+import { buildOtpInputProps } from '../otp-input.js'
 
 describe('Recovery flow: backup email lookup', () => {
   let db: EpdsDb
@@ -119,50 +120,47 @@ describe('Recovery flow: auth_flow creation for request_uri threading', () => {
   })
 })
 
-describe('Recovery flow: OTP pattern', () => {
-  it('OTP sent by better-auth matches configured length', () => {
-    // Verify the configured OTP length matches what users expect
-    const OTP_LENGTH = parseInt(process.env.OTP_LENGTH ?? '8', 10)
-    const pattern = new RegExp(`^[0-9]{${OTP_LENGTH}}$`)
-
-    // Simulate an OTP of the configured length
-    const otp = '1'.repeat(OTP_LENGTH)
-    expect(pattern.test(otp)).toBe(true)
-
-    // A shorter OTP should not match
-    expect(pattern.test('1'.repeat(OTP_LENGTH - 1))).toBe(false)
+describe('Recovery flow: OTP input props', () => {
+  it('numeric charset produces digit-only pattern and zero placeholder', () => {
+    const props = buildOtpInputProps(8, 'numeric')
+    expect(props.pattern).toBe('[0-9]{8}')
+    expect(props.placeholder).toBe('00000000')
+    expect(props.inputmode).toBe('numeric')
+    expect(props.autocapitalize).toBe('off')
   })
 
-  it('OTP entry form uses configured maxlength and pattern', () => {
-    // This is a documentation test confirming the UI constraints
-    // match the better-auth configuration (otpLength: OTP_LENGTH)
-    const OTP_LENGTH = parseInt(process.env.OTP_LENGTH ?? '8', 10)
-    const maxlength = OTP_LENGTH
-    const pattern = `[0-9]{${OTP_LENGTH}}`
-    expect(maxlength).toBe(OTP_LENGTH)
-    expect(pattern).toContain(String(OTP_LENGTH))
+  it('alphanumeric charset produces alphanumeric pattern and X placeholder', () => {
+    const props = buildOtpInputProps(8, 'alphanumeric')
+    expect(props.pattern).toBe('[A-Za-z0-9]{8}')
+    expect(props.placeholder).toBe('XXXXXXXX')
+    expect(props.inputmode).toBe('text')
+    expect(props.autocapitalize).toBe('characters')
   })
 
-  it('alphanumeric OTP matches configured pattern', () => {
-    const OTP_LENGTH = parseInt(process.env.OTP_LENGTH ?? '8', 10)
-    const pattern = new RegExp(`^[A-Za-z0-9]{${OTP_LENGTH}}$`)
-    const otp = 'A1B2C3D4'.slice(0, OTP_LENGTH).padEnd(OTP_LENGTH, 'X')
-    expect(pattern.test(otp)).toBe(true)
+  it('pattern and placeholder length match otpLength', () => {
+    const numeric = buildOtpInputProps(6, 'numeric')
+    expect(numeric.pattern).toBe('[0-9]{6}')
+    expect(numeric.placeholder).toHaveLength(6)
+
+    const alpha = buildOtpInputProps(6, 'alphanumeric')
+    expect(alpha.pattern).toBe('[A-Za-z0-9]{6}')
+    expect(alpha.placeholder).toHaveLength(6)
   })
 
-  it('numeric-only OTP does not match alphanumeric-exclusive pattern', () => {
-    // Verify that a purely numeric OTP still matches [A-Za-z0-9] (it should — digits are a subset)
-    const OTP_LENGTH = parseInt(process.env.OTP_LENGTH ?? '8', 10)
-    const pattern = new RegExp(`^[A-Za-z0-9]{${OTP_LENGTH}}$`)
-    const otp = '1'.repeat(OTP_LENGTH)
-    expect(pattern.test(otp)).toBe(true)
+  it('numeric pattern does not accept letters', () => {
+    const { pattern } = buildOtpInputProps(8, 'numeric')
+    const re = new RegExp(`^${pattern}$`)
+    expect(re.test('12345678')).toBe(true)
+    expect(re.test('1234567A')).toBe(false)
   })
 
-  it('alphanumeric OTP placeholder uses X.repeat(N) not 0.repeat(N)', () => {
-    const OTP_LENGTH = parseInt(process.env.OTP_LENGTH ?? '8', 10)
-    const placeholder = 'X'.repeat(OTP_LENGTH)
-    expect(placeholder).toBe('X'.repeat(OTP_LENGTH))
-    expect(placeholder).not.toBe('0'.repeat(OTP_LENGTH))
+  it('alphanumeric pattern accepts both letters and digits', () => {
+    const { pattern } = buildOtpInputProps(8, 'alphanumeric')
+    const re = new RegExp(`^${pattern}$`)
+    expect(re.test('A1B2C3D4')).toBe(true)
+    expect(re.test('12345678')).toBe(true)
+    expect(re.test('ABCDEFGH')).toBe(true)
+    expect(re.test('A1B2C3D')).toBe(false) // one short
   })
 })
 

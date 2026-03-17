@@ -327,6 +327,7 @@ function renderLoginPage(opts: {
                  maxlength="${opts.otpLength}" pattern="${opts.otpCharset === 'alphanumeric' ? `[A-Za-z0-9]{${opts.otpLength}}` : `[0-9]{${opts.otpLength}}`}" inputmode="${opts.otpCharset === 'alphanumeric' ? 'text' : 'numeric'}"
                  autocomplete="one-time-code" placeholder="${opts.otpCharset === 'alphanumeric' ? 'X'.repeat(opts.otpLength) : '0'.repeat(opts.otpLength)}" class="otp-input"
                  autocapitalize="${opts.otpCharset === 'alphanumeric' ? 'characters' : 'off'}"
+                 oninput="this.value=this.value.replace(/[\s-]/g,'')"
                  style="letter-spacing: ${Math.max(2, Math.round(32 / opts.otpLength))}px">
         </div>
         <button type="submit" class="btn-primary">Verify</button>
