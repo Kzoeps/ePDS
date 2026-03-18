@@ -14,10 +14,12 @@ const logger = createLogger('auth:account-settings')
 
 /**
  * Middleware that validates a better-auth session and injects it into res.locals.
+ * Also detects email drift (email changed via XRPC outside /account) and
+ * invalidates stale sessions when the PDS no longer recognises the session email.
  * If not authenticated, redirects to /account/login.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- better-auth instance has no exported type
-function requireBetterAuth(auth: any) {
+function requireBetterAuth(auth: any, pdsUrl: string, internalSecret: string) {
   return async (
     req: Request,
     res: Response,
@@ -31,7 +33,51 @@ function requireBetterAuth(auth: any) {
         res.redirect(303, '/account/login')
         return
       }
+
+      // Check whether the PDS still recognises this email.
+      // Detects drift caused by email changes via XRPC outside of /account.
+      const result = await getDidByEmail(
+        session.user.email,
+        pdsUrl,
+        internalSecret,
+      )
+
+      if (result === null) {
+        // PDS unavailable — do not touch the session, just show 503
+        res
+          .status(503)
+          .type('html')
+          .send('<p>Service temporarily unavailable. Please try again.</p>')
+        return
+      }
+
+      if (result.did === null) {
+        // Email drift confirmed — PDS no longer has this email.
+        // Delete the stale better-auth user row (cascades to sessions via internalAdapter).
+        // Then sign out to clear the session cookie before redirecting.
+        // Note: signOut will try to delete the session row which is already gone
+        // after deleteUser — this is safe, SQLite DELETE on non-existent row is a no-op.
+        try {
+          const baCtx = await auth.$context
+          await baCtx.internalAdapter.deleteUser(session.user.id)
+        } catch (err) {
+          logger.error(
+            { err },
+            'Failed to delete stale better-auth user on drift',
+          )
+        }
+        try {
+          await auth.api.signOut({ headers: fromNodeHeaders(req.headers) })
+        } catch {
+          /* ignore — session row may already be gone from deleteUser cascade */
+        }
+        res.redirect(303, '/account/login')
+        return
+      }
+
+      // Email is valid and PDS recognises it.
       res.locals.betterAuthSession = session
+      res.locals.did = result.did
       next()
     } catch {
       res.redirect(303, '/account/login')
@@ -45,10 +91,11 @@ export function createAccountSettingsRouter(
   auth: any,
 ): Router {
   const router = Router()
-  const requireAuth = requireBetterAuth(auth)
 
   const pdsUrl = process.env.PDS_INTERNAL_URL || ctx.config.pdsPublicUrl
   const internalSecret = process.env.EPDS_INTERNAL_SECRET ?? ''
+
+  const requireAuth = requireBetterAuth(auth, pdsUrl, internalSecret)
 
   // GET /account - main settings page
   router.get('/account', requireAuth, async (req: Request, res: Response) => {
