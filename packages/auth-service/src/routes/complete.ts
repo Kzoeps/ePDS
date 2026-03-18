@@ -22,10 +22,9 @@ import type { AuthServiceContext } from '../context.js'
 import { createLogger, signCallback } from '@certified-app/shared'
 import { fromNodeHeaders } from 'better-auth/node'
 import { getDidByEmail } from '../lib/get-did-by-email.js'
+import { AUTH_FLOW_COOKIE } from '../constants.js'
 
 const logger = createLogger('auth:complete')
-
-const AUTH_FLOW_COOKIE = 'epds_auth_flow'
 
 export function createCompleteRouter(
   ctx: AuthServiceContext,

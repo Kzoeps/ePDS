@@ -9,5 +9,6 @@ export {
   resolveClientName,
   escapeCss,
   getClientCss,
+  getCachedClientMetadata,
 } from '@certified-app/shared'
 export type { ClientMetadata, ClientBranding } from '@certified-app/shared'

@@ -36,5 +36,6 @@ export {
   resolveClientName,
   escapeCss,
   getClientCss,
+  getCachedClientMetadata,
 } from './client-metadata.js'
 export type { ClientMetadata, ClientBranding } from './client-metadata.js'

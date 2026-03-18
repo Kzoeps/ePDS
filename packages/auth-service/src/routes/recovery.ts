@@ -23,10 +23,9 @@ import {
   getClientCss,
   type ClientMetadata,
 } from '../lib/client-metadata.js'
+import { AUTH_FLOW_COOKIE } from '../constants.js'
 
 const logger = createLogger('auth:recovery')
-
-const AUTH_FLOW_COOKIE = 'epds_auth_flow'
 
 export function createRecoveryRouter(
   ctx: AuthServiceContext,
@@ -36,29 +35,41 @@ export function createRecoveryRouter(
   const router = Router()
 
   router.get('/auth/recover', async (req: Request, res: Response) => {
-    const requestUri = req.query.request_uri as string | undefined
-    let clientId = req.query.client_id as string | undefined
-
-    if (!requestUri) {
-      res.status(400).send(renderError('Missing request_uri parameter'))
+    const flowId = req.cookies[AUTH_FLOW_COOKIE] as string | undefined
+    if (!flowId) {
+      res
+        .status(400)
+        .send(
+          renderError(
+            'Session expired. Please return to the login page and try again.',
+          ),
+        )
       return
     }
 
-    // Fall back to clientId stored in auth_flow if absent from query string
-    if (!clientId) {
-      const flow = ctx.db.getAuthFlowByRequestUri(requestUri)
-      if (flow?.clientId) clientId = flow.clientId
+    const flow = ctx.db.getAuthFlow(flowId)
+    if (!flow) {
+      res
+        .status(400)
+        .send(
+          renderError(
+            'Session expired. Please return to the login page and try again.',
+          ),
+        )
+      return
     }
 
+    const { requestUri, clientId } = flow
+
     const customCss = await resolveCustomCss(
-      clientId,
+      clientId ?? undefined,
       ctx.config.trustedClients,
     )
 
     res.type('html').send(
       renderRecoveryForm({
         requestUri,
-        clientId,
+        clientId: clientId ?? undefined,
         csrfToken: res.locals.csrfToken,
         customCss,
       }),
@@ -66,23 +77,46 @@ export function createRecoveryRouter(
   })
 
   router.post('/auth/recover', async (req: Request, res: Response) => {
+    const flowId = req.cookies[AUTH_FLOW_COOKIE] as string | undefined
+    if (!flowId) {
+      res
+        .status(400)
+        .send(
+          renderError(
+            'Session expired. Please return to the login page and try again.',
+          ),
+        )
+      return
+    }
+
+    const flow = ctx.db.getAuthFlow(flowId)
+    if (!flow) {
+      res
+        .status(400)
+        .send(
+          renderError(
+            'Session expired. Please return to the login page and try again.',
+          ),
+        )
+      return
+    }
+
+    const { requestUri, clientId } = flow
     const email = ((req.body.email as string) || '').trim().toLowerCase()
-    const requestUri = req.body.request_uri as string
-    const clientId = req.body.client_id as string | undefined
 
     const customCss = await resolveCustomCss(
-      clientId,
+      clientId ?? undefined,
       ctx.config.trustedClients,
     )
 
-    if (!email || !requestUri) {
+    if (!email) {
       res.status(400).send(
         renderRecoveryForm({
-          requestUri: requestUri || '',
-          clientId,
+          requestUri,
+          clientId: clientId ?? undefined,
           csrfToken: res.locals.csrfToken,
           customCss,
-          error: 'Email and request URI are required.',
+          error: 'Email is required.',
         }),
       )
       return
@@ -92,7 +126,7 @@ export function createRecoveryRouter(
       res.status(400).send(
         renderRecoveryForm({
           requestUri,
-          clientId,
+          clientId: clientId ?? undefined,
           csrfToken: res.locals.csrfToken,
           customCss,
           error: 'Please enter a valid email address.',
@@ -106,26 +140,6 @@ export function createRecoveryRouter(
 
     if (did) {
       try {
-        // Ensure the auth_flow cookie is set so /auth/complete can thread the request_uri.
-        // If one already exists from a previous step, we keep it; otherwise create a new one.
-        let flowId = req.cookies[AUTH_FLOW_COOKIE] as string | undefined
-        if (!flowId || !ctx.db.getAuthFlow(flowId)) {
-          const { randomBytes } = await import('node:crypto')
-          flowId = randomBytes(16).toString('hex')
-          ctx.db.createAuthFlow({
-            flowId,
-            requestUri,
-            clientId: null,
-            expiresAt: Date.now() + 10 * 60 * 1000,
-          })
-          res.cookie(AUTH_FLOW_COOKIE, flowId, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV !== 'development',
-            sameSite: 'lax',
-            maxAge: 10 * 60 * 1000,
-          })
-        }
-
         // Send OTP via better-auth emailOTP plugin
         await auth.api.sendVerificationOTP({
           body: { email, type: 'sign-in' },
@@ -137,7 +151,7 @@ export function createRecoveryRouter(
             email,
             csrfToken: res.locals.csrfToken,
             requestUri,
-            clientId,
+            clientId: clientId ?? undefined,
             customCss,
           }),
         )
@@ -148,7 +162,7 @@ export function createRecoveryRouter(
             email,
             csrfToken: res.locals.csrfToken,
             requestUri,
-            clientId,
+            clientId: clientId ?? undefined,
             customCss,
             error: 'Failed to send code. Please try again.',
           }),
@@ -161,7 +175,7 @@ export function createRecoveryRouter(
           email,
           csrfToken: res.locals.csrfToken,
           requestUri,
-          clientId,
+          clientId: clientId ?? undefined,
           customCss,
         }),
       )
@@ -170,18 +184,41 @@ export function createRecoveryRouter(
 
   // POST /auth/recover/verify - verify recovery OTP via better-auth
   router.post('/auth/recover/verify', async (req: Request, res: Response) => {
+    const flowId = req.cookies[AUTH_FLOW_COOKIE] as string | undefined
+    if (!flowId) {
+      res
+        .status(400)
+        .send(
+          renderError(
+            'Session expired. Please return to the login page and try again.',
+          ),
+        )
+      return
+    }
+
+    const flow = ctx.db.getAuthFlow(flowId)
+    if (!flow) {
+      res
+        .status(400)
+        .send(
+          renderError(
+            'Session expired. Please return to the login page and try again.',
+          ),
+        )
+      return
+    }
+
+    const { requestUri, clientId } = flow
     const code = ((req.body.code as string) || '').trim()
     const email = ((req.body.email as string) || '').trim().toLowerCase()
-    const requestUri = req.body.request_uri as string
-    const clientId = req.body.client_id as string | undefined
 
-    if (!code || !email || !requestUri) {
+    if (!code || !email) {
       res.status(400).send('<p>Missing required fields.</p>')
       return
     }
 
     const customCss = await resolveCustomCss(
-      clientId,
+      clientId ?? undefined,
       ctx.config.trustedClients,
     )
 
@@ -222,7 +259,7 @@ export function createRecoveryRouter(
           email,
           csrfToken: res.locals.csrfToken,
           requestUri,
-          clientId,
+          clientId: clientId ?? undefined,
           customCss,
           error: errMsg,
         }),
@@ -257,8 +294,6 @@ function renderRecoveryForm(opts: {
     ${opts.error ? '<p class="error">' + escapeHtml(opts.error) + '</p>' : ''}
     <form method="POST" action="/auth/recover">
       <input type="hidden" name="csrf" value="${escapeHtml(opts.csrfToken)}">
-      <input type="hidden" name="request_uri" value="${escapeHtml(opts.requestUri)}">
-      ${opts.clientId ? `<input type="hidden" name="client_id" value="${escapeHtml(opts.clientId)}">` : ''}
       <div class="field">
         <label for="email">Backup email address</label>
         <input type="email" id="email" name="email" required autofocus
@@ -266,7 +301,7 @@ function renderRecoveryForm(opts: {
       </div>
       <button type="submit" class="btn-primary">Send recovery code</button>
     </form>
-    <a href="/oauth/authorize?request_uri=${encodedUri}${opts.clientId ? `&client_id=${encodeURIComponent(opts.clientId)}` : ''}" class="btn-secondary">Back to sign in</a>
+    <a href="/oauth/authorize?request_uri=${encodedUri}" class="btn-secondary">Back to sign in</a>
   </div>
 </body>
 </html>`
@@ -299,9 +334,7 @@ function renderOtpForm(opts: {
     ${opts.error ? '<p class="error">' + escapeHtml(opts.error) + '</p>' : ''}
     <form method="POST" action="/auth/recover/verify">
       <input type="hidden" name="csrf" value="${escapeHtml(opts.csrfToken)}">
-      <input type="hidden" name="request_uri" value="${escapeHtml(opts.requestUri)}">
       <input type="hidden" name="email" value="${escapeHtml(opts.email)}">
-      ${opts.clientId ? `<input type="hidden" name="client_id" value="${escapeHtml(opts.clientId)}">` : ''}
       <div class="field">
         <input type="text" id="code" name="code" required autofocus
                maxlength="8" pattern="[0-9]{8}" inputmode="numeric" autocomplete="one-time-code"
@@ -311,12 +344,10 @@ function renderOtpForm(opts: {
     </form>
     <form method="POST" action="/auth/recover" style="margin-top: 12px;">
       <input type="hidden" name="csrf" value="${escapeHtml(opts.csrfToken)}">
-      <input type="hidden" name="request_uri" value="${escapeHtml(opts.requestUri)}">
       <input type="hidden" name="email" value="${escapeHtml(opts.email)}">
-      ${opts.clientId ? `<input type="hidden" name="client_id" value="${escapeHtml(opts.clientId)}">` : ''}
       <button type="submit" class="btn-secondary">Resend code</button>
     </form>
-    <a href="/oauth/authorize?request_uri=${encodedUri}${opts.clientId ? `&client_id=${encodeURIComponent(opts.clientId)}` : ''}" class="btn-secondary">Back to sign in</a>
+    <a href="/oauth/authorize?request_uri=${encodedUri}" class="btn-secondary">Back to sign in</a>
   </div>
 </body>
 </html>`

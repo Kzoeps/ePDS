@@ -17,10 +17,9 @@ import { createLogger } from '@certified-app/shared'
 import type { EpdsDb } from '@certified-app/shared'
 import type { EmailSender } from './email/sender.js'
 import { getDidByEmail } from './lib/get-did-by-email.js'
+import { AUTH_FLOW_COOKIE } from './constants.js'
 
 const logger = createLogger('auth:better-auth')
-
-const AUTH_FLOW_COOKIE = 'epds_auth_flow'
 
 /**
  * Build the social providers config from env vars.
