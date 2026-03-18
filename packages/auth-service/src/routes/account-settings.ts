@@ -57,7 +57,8 @@ export function createAccountSettingsRouter(
     const handleDomain = ctx.config.pdsHostname
 
     // Look up DID from PDS
-    const did = await getDidByEmail(email, pdsUrl, internalSecret)
+    const didResult = await getDidByEmail(email, pdsUrl, internalSecret)
+    const did = didResult?.did ?? null
     const backupEmails = did ? ctx.db.getBackupEmails(did) : []
 
     // Get all better-auth sessions for this user
@@ -104,7 +105,12 @@ export function createAccountSettingsRouter(
         return
       }
 
-      const did = await getDidByEmail(primaryEmail, pdsUrl, internalSecret)
+      const didResult = await getDidByEmail(
+        primaryEmail,
+        pdsUrl,
+        internalSecret,
+      )
+      const did = didResult?.did ?? null
       if (!did) {
         res.redirect(303, '/account?error=account_not_found')
         return
@@ -189,11 +195,12 @@ export function createAccountSettingsRouter(
     async (req: Request, res: Response) => {
       const session = res.locals.betterAuthSession
       const email = ((req.body.email as string) || '').trim().toLowerCase()
-      const did = await getDidByEmail(
+      const didResult = await getDidByEmail(
         session.user.email,
         pdsUrl,
         internalSecret,
       )
+      const did = didResult?.did ?? null
       if (did && email) {
         ctx.db.removeBackupEmail(did, email)
       }
@@ -266,11 +273,12 @@ export function createAccountSettingsRouter(
 
       const fullHandle = `${normalizedLocal}.${handleDomain}`
 
-      const did = await getDidByEmail(
+      const didResult = await getDidByEmail(
         session.user.email,
         pdsUrl,
         internalSecret,
       )
+      const did = didResult?.did ?? null
       if (!did) {
         res.redirect(303, '/account?error=handle_failed')
         return
@@ -330,11 +338,12 @@ export function createAccountSettingsRouter(
         return
       }
 
-      const did = await getDidByEmail(
+      const didResult = await getDidByEmail(
         session.user.email,
         pdsUrl,
         internalSecret,
       )
+      const did = didResult?.did ?? null
       if (!did) {
         res.redirect(303, '/account?error=delete_failed')
         return
