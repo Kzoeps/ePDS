@@ -30,6 +30,7 @@ import {
 } from '../lib/client-metadata.js'
 import { escapeHtml, createLogger } from '@certified-app/shared'
 import { socialProviders } from '../better-auth.js'
+import { buildOtpInputProps } from '../otp-input.js'
 import {
   resolveLoginHint,
   fetchParLoginHint,
@@ -185,6 +186,8 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
         csrfToken: res.locals.csrfToken,
         authBasePath: '/api/auth',
         pdsPublicUrl: ctx.config.pdsPublicUrl,
+        otpLength: ctx.config.otpLength,
+        otpCharset: ctx.config.otpCharset,
       }),
     )
   })
@@ -203,6 +206,8 @@ function renderLoginPage(opts: {
   csrfToken: string
   authBasePath: string
   pdsPublicUrl: string
+  otpLength: number
+  otpCharset: 'numeric' | 'alphanumeric'
 }): string {
   const b = opts.branding
   const appName = b.client_name || opts.clientName || 'Certified'
@@ -211,6 +216,8 @@ function renderLoginPage(opts: {
   const logoHtml = b.logo_uri
     ? `<img src="${escapeHtml(b.logo_uri)}" alt="${escapeHtml(appName)}" class="client-logo">`
     : ''
+
+  const inputProps = buildOtpInputProps(opts.otpLength, opts.otpCharset)
 
   const hasGoogle = 'google' in socialProviders
   const hasGithub = 'github' in socialProviders
@@ -268,7 +275,7 @@ function renderLoginPage(opts: {
     .field label { display: block; font-size: 14px; font-weight: 500; color: #333; margin-bottom: 6px; }
     .field input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; background: white; }
     .field input:focus { border-color: ${escapeHtml(brandColor)}; }
-    .otp-input { font-size: 28px !important; text-align: center; letter-spacing: 8px; font-family: 'SF Mono', Menlo, Consolas, monospace !important; padding: 14px !important; }
+    .otp-input { font-size: 28px !important; text-align: center; font-family: 'SF Mono', Menlo, Consolas, monospace !important; padding: 14px !important; }
     .otp-input:focus { border-color: ${escapeHtml(brandColor)} !important; }
     .btn-primary { width: 100%; padding: 12px; background: ${escapeHtml(brandColor)}; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 500; cursor: pointer; }
     .btn-primary:hover { opacity: 0.9; }
@@ -319,9 +326,13 @@ function renderLoginPage(opts: {
       <form id="form-verify-otp">
         <input type="hidden" id="otp-email" name="email" value="${escapeHtml(opts.loginHint)}">
         <div class="field">
+          <label for="code">One-time code</label>
           <input type="text" id="code" name="code" required
-                 maxlength="8" pattern="[0-9]{8}" inputmode="numeric"
-                 autocomplete="one-time-code" placeholder="00000000" class="otp-input">
+                 maxlength="${opts.otpLength}" pattern="${inputProps.pattern}" inputmode="${inputProps.inputmode}"
+                 autocomplete="one-time-code" placeholder="${inputProps.placeholder}" class="otp-input"
+                 autocapitalize="${inputProps.autocapitalize}"
+                  oninput="this.value=this.value.replace(/[\\s-]/g,'')"
+                 style="letter-spacing: ${Math.max(2, Math.round(32 / opts.otpLength))}px">
         </div>
         <button type="submit" class="btn-primary">Verify</button>
       </form>
@@ -357,11 +368,13 @@ function renderLoginPage(opts: {
         errorEl.textContent = '';
       }
 
+      var otpLength = ${opts.otpLength};
+      var otpCharset = ${JSON.stringify(opts.otpCharset)};
       function showOtpStep(email) {
         currentEmail = email;
         otpEmailInput.value = email;
         var masked = email.replace(/(.{2})[^@]*(@.*)/, '$1***$2');
-        otpSubtitle.textContent = 'We sent an 8-digit code to ' + masked;
+        otpSubtitle.textContent = 'We sent a ' + otpLength + (otpCharset === 'alphanumeric' ? '-character' : '-digit') + ' code to ' + masked;
         stepEmail.classList.add('hidden');
         stepOtp.classList.add('active');
         recoveryLink.style.display = 'block';
@@ -493,7 +506,7 @@ function renderLoginPage(opts: {
             if (result.error) {
               showError(result.error);
             } else {
-              otpSubtitle.textContent = 'We sent an 8-digit code to ' + masked;
+              otpSubtitle.textContent = 'We sent a ' + otpLength + (otpCharset === 'alphanumeric' ? '-character' : '-digit') + ' code to ' + masked;
             }
           });
         }

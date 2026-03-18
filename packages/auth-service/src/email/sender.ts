@@ -2,7 +2,11 @@ import * as nodemailer from 'nodemailer'
 import { createLogger } from '@certified-app/shared'
 import type { Transporter } from 'nodemailer'
 import type { EmailConfig } from '@certified-app/shared'
-import { escapeHtml } from '@certified-app/shared'
+import {
+  escapeHtml,
+  formatOtpPlain,
+  formatOtpHtmlGrouped,
+} from '@certified-app/shared'
 import { resolveClientMetadata } from '../lib/client-metadata.js'
 
 const logger = createLogger('auth:email')
@@ -215,9 +219,9 @@ export class EmailSender {
                 app_name: appName,
               })
             } else if (isNewUser) {
-              subject = `${code} — Welcome to ${appName}`
+              subject = `${formatOtpPlain(code)} — Welcome to ${appName}`
             } else {
-              subject = `${code} is your sign-in code for ${appName}`
+              subject = `${formatOtpPlain(code)} is your sign-in code for ${appName}`
             }
 
             const fromName = metadata.client_name || this.config.fromName
@@ -266,7 +270,7 @@ export class EmailSender {
   }): Promise<void> {
     const { to, code, clientAppName, pdsName, pdsDomain } = opts
 
-    const subject = `${code} is your sign-in code for ${pdsName}`
+    const subject = `${formatOtpPlain(code)} is your sign-in code for ${pdsName}`
 
     const text = [
       `Your sign-in code for ${clientAppName}:`,
@@ -288,7 +292,7 @@ export class EmailSender {
   <p>Your sign-in code for <strong>${escapeHtml(clientAppName)}</strong>:</p>
   <p style="margin: 30px 0; text-align: center;">
     <span style="font-size: 32px; font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; letter-spacing: 6px; background: #f5f5f5; padding: 16px 24px; border-radius: 8px; display: inline-block; font-weight: 600; color: #0f1828;">
-      ${escapeHtml(code)}
+      ${formatOtpHtmlGrouped(code)}
     </span>
   </p>
   <p style="color: #666; font-size: 14px;">This code expires in 10 minutes.</p>
@@ -315,7 +319,7 @@ export class EmailSender {
   }): Promise<void> {
     const { to, code, pdsName, pdsDomain } = opts
 
-    const subject = `${code} — Welcome to ${pdsName}`
+    const subject = `${formatOtpPlain(code)} — Welcome to ${pdsName}`
 
     const text = [
       `Welcome to ${pdsName}!`,
@@ -342,7 +346,7 @@ export class EmailSender {
   <p>Enter this code to confirm your email and create your account:</p>
   <p style="margin: 30px 0; text-align: center;">
     <span style="font-size: 32px; font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; letter-spacing: 6px; background: #f5f5f5; padding: 16px 24px; border-radius: 8px; display: inline-block; font-weight: 600; color: #0f1828;">
-      ${escapeHtml(code)}
+      ${formatOtpHtmlGrouped(code)}
     </span>
   </p>
   <p style="color: #666; font-size: 14px;">This code expires in 10 minutes.</p>

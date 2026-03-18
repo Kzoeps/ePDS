@@ -28,7 +28,12 @@ export function createAuthService(config: AuthServiceConfig): {
 
   // Mount better-auth BEFORE express.json() so it can parse its own request bodies.
   // All better-auth endpoints live under /api/auth/*.
-  const betterAuthInstance = createBetterAuth(ctx.emailSender, ctx.db)
+  const betterAuthInstance = createBetterAuth(
+    ctx.emailSender,
+    ctx.db,
+    config.otpLength,
+    config.otpCharset,
+  )
   app.all('/api/auth/*', toNodeHandler(betterAuthInstance))
 
   // Middleware
@@ -75,7 +80,7 @@ export function createAuthService(config: AuthServiceConfig): {
   app.use(createLoginPageRouter(ctx))
   app.use(createConsentRouter(ctx))
   app.use(createRecoveryRouter(ctx, betterAuthInstance))
-  app.use(createAccountLoginRouter(betterAuthInstance))
+  app.use(createAccountLoginRouter(betterAuthInstance, ctx))
   app.use(createAccountSettingsRouter(ctx, betterAuthInstance))
   app.use(createCompleteRouter(ctx, betterAuthInstance))
   app.use(createChooseHandleRouter(ctx, betterAuthInstance))
@@ -132,9 +137,35 @@ async function main() {
       fromName: process.env.SMTP_FROM_NAME || 'ePDS',
     },
     dbLocation: process.env.DB_LOCATION || './data/epds.sqlite',
+    otpLength: Number(process.env.OTP_LENGTH ?? '8'),
+    otpCharset: (process.env.OTP_CHARSET || 'numeric') as
+      | 'numeric'
+      | 'alphanumeric',
   }
 
-  await runBetterAuthMigrations(config.dbLocation, config.hostname)
+  if (
+    isNaN(config.otpLength) ||
+    config.otpLength < 4 ||
+    config.otpLength > 12
+  ) {
+    throw new Error(
+      `Invalid OTP_LENGTH: must be between 4 and 12, got "${process.env.OTP_LENGTH}"`,
+    )
+  }
+
+  const validCharsets = ['numeric', 'alphanumeric']
+  if (!validCharsets.includes(config.otpCharset)) {
+    throw new Error(
+      `Invalid OTP_CHARSET: must be 'numeric' or 'alphanumeric', got "${process.env.OTP_CHARSET}"`,
+    )
+  }
+
+  await runBetterAuthMigrations(
+    config.dbLocation,
+    config.hostname,
+    config.otpLength,
+    config.otpCharset,
+  )
 
   const { app, ctx } = createAuthService(config)
 
