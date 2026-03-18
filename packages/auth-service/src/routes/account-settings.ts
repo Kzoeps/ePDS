@@ -103,10 +103,8 @@ export function createAccountSettingsRouter(
     const email = session.user.email.toLowerCase()
     const handleDomain = ctx.config.pdsHostname
 
-    // Look up DID from PDS
-    const didResult = await getDidByEmail(email, pdsUrl, internalSecret)
-    const did = didResult?.did ?? null
-    const backupEmails = did ? ctx.db.getBackupEmails(did) : []
+    const did = res.locals.did as string
+    const backupEmails = ctx.db.getBackupEmails(did)
 
     // Get all better-auth sessions for this user
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- better-auth session type not exported
@@ -152,16 +150,7 @@ export function createAccountSettingsRouter(
         return
       }
 
-      const didResult = await getDidByEmail(
-        primaryEmail,
-        pdsUrl,
-        internalSecret,
-      )
-      const did = didResult?.did ?? null
-      if (!did) {
-        res.redirect(303, '/account?error=account_not_found')
-        return
-      }
+      const did = res.locals.did as string
 
       try {
         const { token, tokenHash } = generateVerificationToken()
@@ -240,14 +229,8 @@ export function createAccountSettingsRouter(
     '/account/backup-email/remove',
     requireAuth,
     async (req: Request, res: Response) => {
-      const session = res.locals.betterAuthSession
       const email = ((req.body.email as string) || '').trim().toLowerCase()
-      const didResult = await getDidByEmail(
-        session.user.email,
-        pdsUrl,
-        internalSecret,
-      )
-      const did = didResult?.did ?? null
+      const did = res.locals.did as string
       if (did && email) {
         ctx.db.removeBackupEmail(did, email)
       }
@@ -320,16 +303,7 @@ export function createAccountSettingsRouter(
 
       const fullHandle = `${normalizedLocal}.${handleDomain}`
 
-      const didResult = await getDidByEmail(
-        session.user.email,
-        pdsUrl,
-        internalSecret,
-      )
-      const did = didResult?.did ?? null
-      if (!did) {
-        res.redirect(303, '/account?error=handle_failed')
-        return
-      }
+      const did = res.locals.did as string
 
       try {
         const pdsAdminPassword = process.env.PDS_ADMIN_PASSWORD
@@ -385,16 +359,7 @@ export function createAccountSettingsRouter(
         return
       }
 
-      const didResult = await getDidByEmail(
-        session.user.email,
-        pdsUrl,
-        internalSecret,
-      )
-      const did = didResult?.did ?? null
-      if (!did) {
-        res.redirect(303, '/account?error=delete_failed')
-        return
-      }
+      const did = res.locals.did as string
 
       try {
         const pdsAdminPassword = process.env.PDS_ADMIN_PASSWORD

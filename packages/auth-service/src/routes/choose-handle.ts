@@ -120,8 +120,15 @@ export function createChooseHandleRouter(
     const { email } = result
 
     // Guard: if PDS account already exists for this email, redirect to /auth/complete
-    const did = await getDidByEmail(email, pdsUrl, internalSecret)
-    if (did) {
+    const didResult = await getDidByEmail(email, pdsUrl, internalSecret)
+    if (didResult === null) {
+      res
+        .status(503)
+        .type('html')
+        .send(renderError('Service temporarily unavailable. Please try again.'))
+      return
+    }
+    if (didResult.did) {
       logger.info(
         { email },
         'Existing user reached choose-handle — redirecting to /auth/complete',
@@ -186,8 +193,15 @@ export function createChooseHandleRouter(
     // Guard: if PDS account already exists, bounce back to /auth/complete
     // (mirrors the same check in the GET handler — prevents signing a
     // new_account callback for an existing user who somehow reaches this POST)
-    const did = await getDidByEmail(email, pdsUrl, internalSecret)
-    if (did) {
+    const didResult = await getDidByEmail(email, pdsUrl, internalSecret)
+    if (didResult === null) {
+      res
+        .status(503)
+        .type('html')
+        .send(renderError('Service temporarily unavailable. Please try again.'))
+      return
+    }
+    if (didResult.did) {
       logger.info(
         { email },
         'Existing user reached POST choose-handle — redirecting to /auth/complete',
