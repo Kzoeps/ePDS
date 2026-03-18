@@ -39,10 +39,9 @@ import {
   resolveLoginHint,
   fetchParLoginHint,
 } from '../lib/resolve-login-hint.js'
+import { AUTH_FLOW_COOKIE } from '../constants.js'
 
 const logger = createLogger('auth:login-page')
-
-const AUTH_FLOW_COOKIE = 'epds_auth_flow'
 const AUTH_FLOW_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
 export function createLoginPageRouter(ctx: AuthServiceContext): Router {
@@ -371,7 +370,7 @@ function renderLoginPage(opts: {
       <button type="button" class="btn-secondary" id="btn-back" style="margin-left: 8px;">Use different email</button>
     </div>
 
-    <a href="/auth/recover?request_uri=${escapeHtml(encodeURIComponent(opts.requestUri))}&client_id=${escapeHtml(encodeURIComponent(opts.clientId))}"
+    <a href="/auth/recover"
        class="recovery-link" id="recovery-link" style="display:${opts.initialStep === 'otp' ? 'block' : 'none'};">
       Recover with backup email
     </a>

@@ -32,6 +32,19 @@ const FETCH_TIMEOUT_MS = 5000
 
 const cache = new Map<string, CacheEntry>()
 
+/**
+ * Synchronously returns cached metadata for a clientId if present and not expired.
+ * Returns undefined if the cache is cold (first load) or the entry has expired.
+ * Used by the CSP middleware to avoid an async fetch in the request path.
+ */
+export function getCachedClientMetadata(
+  clientId: string,
+): ClientMetadata | undefined {
+  const entry = cache.get(clientId)
+  if (!entry || entry.expiresAt <= Date.now()) return undefined
+  return entry.metadata
+}
+
 export async function resolveClientName(clientId: string): Promise<string> {
   const metadata = await resolveClientMetadata(clientId)
   return metadata.client_name || extractDomain(clientId) || 'an application'

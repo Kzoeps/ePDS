@@ -28,6 +28,7 @@ export {
   resolveClientName,
   escapeCss,
   getClientCss,
+  getCachedClientMetadata,
 } from './client-metadata.js'
 export type { ClientMetadata, ClientBranding } from './client-metadata.js'
 export { validateLocalPart, LOCAL_PART_MIN, LOCAL_PART_MAX } from './handle.js'

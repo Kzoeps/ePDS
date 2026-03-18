@@ -6,10 +6,9 @@ import {
   getClientCss,
 } from '../lib/client-metadata.js'
 import { escapeHtml, signCallback, createLogger } from '@certified-app/shared'
+import { AUTH_FLOW_COOKIE } from '../constants.js'
 
 const logger = createLogger('auth:consent')
-
-const AUTH_FLOW_COOKIE = 'epds_auth_flow'
 
 /**
  * GET /auth/consent

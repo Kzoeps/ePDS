@@ -84,21 +84,24 @@ describe('Recovery flow: auth_flow creation for request_uri threading', () => {
     } catch {}
   })
 
-  it('creates auth_flow with requestUri when backup email is found', () => {
+  it('auth_flow created by login page carries clientId for recovery to use', () => {
     const flowId = randomBytes(16).toString('hex')
     const requestUri = 'urn:ietf:params:oauth:request_uri:recovery-test'
+    const clientId = 'https://app.example.com/client-metadata.json'
 
+    // The login page creates the auth_flow row with clientId populated.
+    // Recovery reads it from the cookie → DB — it never creates its own row.
     db.createAuthFlow({
       flowId,
       requestUri,
-      clientId: null,
+      clientId,
       expiresAt: Date.now() + 10 * 60 * 1000,
     })
 
     const flow = db.getAuthFlow(flowId)
     expect(flow).toBeDefined()
     expect(flow!.requestUri).toBe(requestUri)
-    expect(flow!.clientId).toBeNull()
+    expect(flow!.clientId).toBe(clientId)
   })
 
   it('does not create duplicate auth_flow if one already exists', () => {

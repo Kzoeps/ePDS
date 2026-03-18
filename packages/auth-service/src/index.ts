@@ -16,6 +16,8 @@ import { createAccountLoginRouter } from './routes/account-login.js'
 import { createAccountSettingsRouter } from './routes/account-settings.js'
 import { createCompleteRouter } from './routes/complete.js'
 import { createChooseHandleRouter } from './routes/choose-handle.js'
+import { AUTH_FLOW_COOKIE } from './constants.js'
+import { getCachedClientMetadata } from './lib/client-metadata.js'
 
 const logger = createLogger('auth-service')
 
@@ -45,33 +47,79 @@ export function createAuthService(config: AuthServiceConfig): {
   app.use(csrfProtection(config.csrfSecret))
   app.use(requestRateLimit({ windowMs: 60_000, maxRequests: 60 }))
 
-  // Security headers
+  // Security headers — applied to all routes
   app.use((req, res, next) => {
     res.setHeader('X-Frame-Options', 'DENY')
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Referrer-Policy', 'no-referrer')
+    res.setHeader(
+      'Strict-Transport-Security',
+      'max-age=63072000; includeSubDomains; preload',
+    )
+    next()
+  })
 
-    // Build img-src dynamically: allow the client's origin if a client_id URL is present
+  // Dynamic CSP for auth/oauth pages only — builds img-src to allow the OAuth
+  // client's logo. Scoped to /oauth/* and /auth/* to avoid a DB lookup on every
+  // static asset, metrics, or better-auth API request.
+  app.use(['/oauth', '/auth'], (req, res, next) => {
+    // Resolve clientId from three sources in priority order:
+    //   1. req.query.client_id — present on the initial /oauth/authorize redirect
+    //   2. req.body.client_id  — present in legacy POST bodies (transitional)
+    //   3. auth_flow DB lookup via cookie — used on recovery routes and any page
+    //      that no longer carries client_id in query/body after the refactor.
+    //
+    // Trust note: clientId stored in auth_flow originates from the OAuth
+    // authorization request (set by the OAuth client, not by the user). The
+    // cookie is httpOnly so it cannot be forged by page scripts. The worst-case
+    // from cookie injection is an attacker adding an arbitrary origin to img-src,
+    // which is the same exposure as the existing req.query.client_id path.
+    let clientId: string | undefined =
+      (req.query.client_id as string | undefined) || req.body?.client_id
+    if (!clientId) {
+      const flowId = req.cookies?.[AUTH_FLOW_COOKIE] as string | undefined
+      if (flowId) {
+        clientId = ctx.db.getAuthFlow(flowId)?.clientId ?? undefined
+      }
+    }
+
+    // Build img-src: allow the client's origin and logo_uri origin (may differ,
+    // e.g. when the logo is served from a CDN separate from the client metadata URL).
     let imgSrc = "'self' data:"
-    const clientId = (req.query.client_id as string) || req.body?.client_id
+    const allowedOrigins = new Set<string>()
+
     if (clientId && typeof clientId === 'string') {
       try {
-        const clientOrigin = new URL(clientId).origin
-        if (clientOrigin && clientOrigin !== 'null') {
-          imgSrc += ` ${clientOrigin}`
-        }
+        const o = new URL(clientId).origin
+        if (o && o !== 'null') allowedOrigins.add(o)
       } catch {
-        /* not a valid URL, keep default */
+        /* not a valid URL */
       }
+    }
+
+    // Also allow the logo_uri origin if it differs from the client_id origin.
+    // Uses the synchronous in-memory cache — populated when the login/recovery
+    // page resolves branding. If the cache is cold on the very first request,
+    // the logo may be blocked until the next page load warms the cache.
+    if (clientId && ctx.config.trustedClients.includes(clientId)) {
+      const cached = getCachedClientMetadata(clientId)
+      if (cached?.logo_uri) {
+        try {
+          const o = new URL(cached.logo_uri).origin
+          if (o && o !== 'null') allowedOrigins.add(o)
+        } catch {
+          /* not a valid URL */
+        }
+      }
+    }
+
+    if (allowedOrigins.size > 0) {
+      imgSrc += ' ' + [...allowedOrigins].join(' ')
     }
 
     res.setHeader(
       'Content-Security-Policy',
       `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src ${imgSrc}; connect-src 'self'`,
-    )
-    res.setHeader(
-      'Strict-Transport-Security',
-      'max-age=63072000; includeSubDomains; preload',
     )
     next()
   })

@@ -18,12 +18,11 @@ import { emailOTP } from 'better-auth/plugins'
 import Database from 'better-sqlite3'
 import type { EmailSender } from './email/sender.js'
 import { getDidByEmail } from './lib/get-did-by-email.js'
+import { AUTH_FLOW_COOKIE } from './constants.js'
 
 export type BetterAuthInstance = ReturnType<typeof createBetterAuth>
 
 const logger = createLogger('auth:better-auth')
-
-const AUTH_FLOW_COOKIE = 'epds_auth_flow'
 
 /**
  * Build the social providers config from env vars.
