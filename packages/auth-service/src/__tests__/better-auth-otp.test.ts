@@ -113,8 +113,8 @@ describe('sendVerificationOTP client branding via auth_flow', () => {
     fetchSpy.mockResolvedValueOnce(
       new Response(JSON.stringify({ did: null }), { status: 200 }),
     )
-    const did = await getDidByEmail(email, 'http://core:3000', 'secret')
-    const isNewUser = !did
+    const result = await getDidByEmail(email, 'http://core:3000', 'secret')
+    const isNewUser = !result?.did
 
     // Lookup (simulating ctx.getCookie() returning 'brand-test-flow')
     const flowId = 'brand-test-flow'
@@ -162,8 +162,8 @@ describe('sendVerificationOTP client branding via auth_flow', () => {
         status: 200,
       }),
     )
-    const did = await getDidByEmail(email, 'http://core:3000', 'secret')
-    const isNewUser = !did
+    const result = await getDidByEmail(email, 'http://core:3000', 'secret')
+    const isNewUser = !result?.did
 
     const pdsName = 'My PDS'
     await sendOtpCode({

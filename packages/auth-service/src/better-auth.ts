@@ -191,8 +191,8 @@ export function createBetterAuth(
             process.env.PDS_INTERNAL_URL ||
             `https://${process.env.PDS_HOSTNAME ?? 'localhost'}`
           const internalSecret = process.env.EPDS_INTERNAL_SECRET ?? ''
-          const did = await getDidByEmail(email, pdsUrl, internalSecret)
-          const isNewUser = !did
+          const result = await getDidByEmail(email, pdsUrl, internalSecret)
+          const isNewUser = !result?.did
 
           // Try to resolve client_id from the active auth_flow via cookie
           let clientId: string | undefined

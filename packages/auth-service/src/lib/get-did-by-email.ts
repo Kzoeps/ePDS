@@ -5,7 +5,10 @@
  * exists for a given email (sign-up vs. login distinction, consent
  * checks, account settings).
  *
- * Returns the DID string if found, or null on not-found / error.
+ * Return value semantics:
+ * - `{ did: string }` — PDS responded 200 and an account exists for this email
+ * - `{ did: null }`  — PDS responded 200 but no account exists for this email
+ * - `null` (outer)   — PDS error: non-2xx response, timeout, or network failure
  */
 
 import { createLogger } from '@certified-app/shared'
@@ -16,7 +19,7 @@ export async function getDidByEmail(
   email: string,
   pdsUrl: string,
   internalSecret: string,
-): Promise<string | null> {
+): Promise<{ did: string | null } | null> {
   try {
     const res = await fetch(
       `${pdsUrl}/_internal/account-by-email?email=${encodeURIComponent(email)}`,
@@ -27,7 +30,7 @@ export async function getDidByEmail(
     )
     if (!res.ok) return null
     const data = (await res.json()) as { did: string | null }
-    return data.did
+    return { did: data.did }
   } catch (err) {
     logger.warn({ err, email }, 'Failed to look up DID by email from PDS')
     return null
