@@ -33,7 +33,7 @@ describe('getDidByEmail', () => {
 
     const result = await getDidByEmail('alice@example.com', PDS_URL, SECRET)
 
-    expect(result).toBe('did:plc:abc123')
+    expect(result).toEqual({ did: 'did:plc:abc123' })
     expect(fetchSpy).toHaveBeenCalledOnce()
     expect(fetchSpy).toHaveBeenCalledWith(
       `${PDS_URL}/_internal/account-by-email?email=alice%40example.com`,
@@ -43,7 +43,7 @@ describe('getDidByEmail', () => {
     )
   })
 
-  it('returns null when PDS account does not exist (did is null)', async () => {
+  it('returns { did: null } when PDS account does not exist (did is null)', async () => {
     fetchSpy.mockResolvedValueOnce(
       new Response(JSON.stringify({ did: null }), {
         status: 200,
@@ -53,7 +53,7 @@ describe('getDidByEmail', () => {
 
     const result = await getDidByEmail('newuser@example.com', PDS_URL, SECRET)
 
-    expect(result).toBeNull()
+    expect(result).toEqual({ did: null })
   })
 
   it('returns null on non-OK HTTP response', async () => {
@@ -142,7 +142,7 @@ describe('getDidByEmail', () => {
       SECRET,
     )
 
-    expect(result).toBe('did:plc:xyz')
+    expect(result).toEqual({ did: 'did:plc:xyz' })
     expect(fetchSpy).toHaveBeenCalledWith(
       'https://pds.example.com/_internal/account-by-email?email=alice%40example.com',
       expect.anything(),

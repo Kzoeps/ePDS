@@ -20,7 +20,7 @@
  */
 import { Router, type Request, type Response } from 'express'
 import type { AuthServiceContext } from '../context.js'
-import { createLogger, signCallback } from '@certified-app/shared'
+import { createLogger, signCallback, escapeHtml } from '@certified-app/shared'
 import { fromNodeHeaders } from 'better-auth/node'
 import { getDidByEmail } from '../lib/get-did-by-email.js'
 import { requireInternalEnv } from '../lib/require-internal-env.js'
@@ -91,8 +91,15 @@ export function createCompleteRouter(
     // Step 4: Check whether this is a new account.
     // New accounts (no PDS account yet) are redirected to the handle picker.
     // Existing accounts may need consent for first-time client logins.
-    const did = await getDidByEmail(email, pdsUrl, internalSecret)
-    const isNewAccount = !did
+    const didResult = await getDidByEmail(email, pdsUrl, internalSecret)
+    if (didResult === null) {
+      res
+        .status(503)
+        .type('html')
+        .send(renderError('Service temporarily unavailable. Please try again.'))
+      return
+    }
+    const isNewAccount = didResult.did === null
 
     const clientId = flow.clientId ?? ''
     const needsConsent =
@@ -153,4 +160,12 @@ export function createCompleteRouter(
   })
 
   return router
+}
+
+function renderError(message: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Error</title></head>
+<body><p style="color:red;padding:20px">${escapeHtml(message)}</p></body>
+</html>`
 }
