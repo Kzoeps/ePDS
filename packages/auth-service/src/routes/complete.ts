@@ -20,9 +20,10 @@
  */
 import { Router, type Request, type Response } from 'express'
 import type { AuthServiceContext } from '../context.js'
-import { createLogger, signCallback, escapeHtml } from '@certified-app/shared'
+import { createLogger, signCallback } from '@certified-app/shared'
 import { fromNodeHeaders } from 'better-auth/node'
 import { getDidByEmail } from '../lib/get-did-by-email.js'
+import { renderError } from '../lib/render-error.js'
 
 const logger = createLogger('auth:complete')
 
@@ -163,12 +164,4 @@ export function createCompleteRouter(
   })
 
   return router
-}
-
-function renderError(message: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Error</title></head>
-<body><p style="color:red;padding:20px">${escapeHtml(message)}</p></body>
-</html>`
 }

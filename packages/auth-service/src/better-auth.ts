@@ -192,7 +192,14 @@ export function createBetterAuth(
             `https://${process.env.PDS_HOSTNAME ?? 'localhost'}`
           const internalSecret = process.env.EPDS_INTERNAL_SECRET ?? ''
           const result = await getDidByEmail(email, pdsUrl, internalSecret)
-          const isNewUser = !result?.did
+          if (result === null) {
+            logger.error(
+              { email },
+              'better-auth: PDS lookup failed, aborting OTP send',
+            )
+            throw new Error('PDS lookup failed; cannot send OTP')
+          }
+          const isNewUser = result.did === null
 
           // Try to resolve client_id from the active auth_flow via cookie
           let clientId: string | undefined
