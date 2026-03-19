@@ -26,6 +26,7 @@ import {
 import { fromNodeHeaders } from 'better-auth/node'
 import { getDidByEmail } from '../lib/get-did-by-email.js'
 import { requireInternalEnv } from '../lib/require-internal-env.js'
+import { renderError } from '../lib/render-error.js'
 
 const logger = createLogger('auth:choose-handle')
 
@@ -580,13 +581,5 @@ function renderChooseHandlePage(
     })();
   </script>
 </body>
-</html>`
-}
-
-function renderError(message: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Error</title></head>
-<body><p style="color:red;padding:20px">${escapeHtml(message)}</p></body>
 </html>`
 }

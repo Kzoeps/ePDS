@@ -10,15 +10,18 @@ import {
 import { fromNodeHeaders } from 'better-auth/node'
 import { getDidByEmail } from '../lib/get-did-by-email.js'
 import { ensurePdsUrl } from '../lib/pds-url.js'
+import { renderError, renderNoAccountPage } from '../lib/render-error.js'
 
 const logger = createLogger('auth:account-settings')
 
 /**
  * Middleware that validates a better-auth session and injects it into res.locals.
+ * Also detects email drift (email changed via XRPC outside /account) and
+ * signs out the current session when the PDS no longer recognises the session email.
  * If not authenticated, redirects to /account/login.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- better-auth instance has no exported type
-function requireBetterAuth(auth: any) {
+function requireBetterAuth(auth: any, pdsUrl: string, internalSecret: string) {
   return async (
     req: Request,
     res: Response,
@@ -32,7 +35,48 @@ function requireBetterAuth(auth: any) {
         res.redirect(303, '/account/login')
         return
       }
+
+      // Check whether the PDS still recognises this email.
+      // Detects drift caused by email changes via XRPC outside of /account.
+      const result = await getDidByEmail(
+        session.user.email,
+        pdsUrl,
+        internalSecret,
+      )
+
+      if (result === null) {
+        // PDS unavailable — do not touch the session, just show 503
+        res
+          .status(503)
+          .type('html')
+          .send(
+            renderError('Service temporarily unavailable. Please try again.'),
+          )
+        return
+      }
+
+      if (result.did === null) {
+        // No PDS account found for this email — either a genuinely new user who
+        // has never registered via an app, or email drift (email changed on the
+        // PDS out-of-band). We cannot distinguish the two cases without a local
+        // DID mirror, so we treat both the same: sign out the dangling session
+        // and show a clear error page rather than silently redirecting to login.
+        logger.info(
+          { email: session.user.email },
+          'No PDS account found for session email — signing out and showing error',
+        )
+        try {
+          await auth.api.signOut({ headers: fromNodeHeaders(req.headers) })
+        } catch (err) {
+          logger.warn({ err }, 'Failed to sign out on no-account error')
+        }
+        res.status(403).type('html').send(renderNoAccountPage())
+        return
+      }
+
+      // Email is valid and PDS recognises it.
       res.locals.betterAuthSession = session
+      res.locals.did = result.did
       next()
     } catch {
       res.redirect(303, '/account/login')
@@ -46,7 +90,6 @@ export function createAccountSettingsRouter(
   auth: any,
 ): Router {
   const router = Router()
-  const requireAuth = requireBetterAuth(auth)
 
   const pdsUrl = ensurePdsUrl(
     process.env.PDS_INTERNAL_URL,
@@ -54,15 +97,16 @@ export function createAccountSettingsRouter(
   )
   const internalSecret = process.env.EPDS_INTERNAL_SECRET ?? ''
 
+  const requireAuth = requireBetterAuth(auth, pdsUrl, internalSecret)
+
   // GET /account - main settings page
   router.get('/account', requireAuth, async (req: Request, res: Response) => {
     const session = res.locals.betterAuthSession
     const email = session.user.email.toLowerCase()
     const handleDomain = ctx.config.pdsHostname
 
-    // Look up DID from PDS
-    const did = await getDidByEmail(email, pdsUrl, internalSecret)
-    const backupEmails = did ? ctx.db.getBackupEmails(did) : []
+    const did = res.locals.did as string
+    const backupEmails = ctx.db.getBackupEmails(did)
 
     // Get all better-auth sessions for this user
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- better-auth session type not exported
@@ -78,7 +122,7 @@ export function createAccountSettingsRouter(
 
     res.type('html').send(
       renderSettingsPage({
-        did: did ?? '(unknown)',
+        did,
         email,
         handleDomain,
         backupEmails,
@@ -108,11 +152,7 @@ export function createAccountSettingsRouter(
         return
       }
 
-      const did = await getDidByEmail(primaryEmail, pdsUrl, internalSecret)
-      if (!did) {
-        res.redirect(303, '/account?error=account_not_found')
-        return
-      }
+      const did = res.locals.did as string
 
       try {
         const { token, tokenHash } = generateVerificationToken()
@@ -190,14 +230,9 @@ export function createAccountSettingsRouter(
   router.post(
     '/account/backup-email/remove',
     requireAuth,
-    async (req: Request, res: Response) => {
-      const session = res.locals.betterAuthSession
+    (req: Request, res: Response) => {
       const email = ((req.body.email as string) || '').trim().toLowerCase()
-      const did = await getDidByEmail(
-        session.user.email,
-        pdsUrl,
-        internalSecret,
-      )
+      const did = res.locals.did as string
       if (did && email) {
         ctx.db.removeBackupEmail(did, email)
       }
@@ -258,7 +293,6 @@ export function createAccountSettingsRouter(
     '/account/handle',
     requireAuth,
     async (req: Request, res: Response) => {
-      const session = res.locals.betterAuthSession
       const rawHandle = ((req.body.handle as string) || '').trim()
       const handleDomain = ctx.config.pdsHostname
 
@@ -270,15 +304,7 @@ export function createAccountSettingsRouter(
 
       const fullHandle = `${normalizedLocal}.${handleDomain}`
 
-      const did = await getDidByEmail(
-        session.user.email,
-        pdsUrl,
-        internalSecret,
-      )
-      if (!did) {
-        res.redirect(303, '/account?error=handle_failed')
-        return
-      }
+      const did = res.locals.did as string
 
       try {
         const pdsAdminPassword = process.env.PDS_ADMIN_PASSWORD
@@ -326,7 +352,6 @@ export function createAccountSettingsRouter(
     '/account/delete',
     requireAuth,
     async (req: Request, res: Response) => {
-      const session = res.locals.betterAuthSession
       const confirmation = req.body.confirm as string
 
       if (confirmation !== 'DELETE') {
@@ -334,15 +359,7 @@ export function createAccountSettingsRouter(
         return
       }
 
-      const did = await getDidByEmail(
-        session.user.email,
-        pdsUrl,
-        internalSecret,
-      )
-      if (!did) {
-        res.redirect(303, '/account?error=delete_failed')
-        return
-      }
+      const did = res.locals.did as string
 
       try {
         const pdsAdminPassword = process.env.PDS_ADMIN_PASSWORD

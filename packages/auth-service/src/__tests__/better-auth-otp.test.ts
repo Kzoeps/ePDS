@@ -114,7 +114,7 @@ describe('sendVerificationOTP client branding via auth_flow', () => {
       new Response(JSON.stringify({ did: null }), { status: 200 }),
     )
     const result = await getDidByEmail(email, 'http://core:3000', 'secret')
-    const isNewUser = !result?.did
+    const isNewUser = result!.did === null
 
     // Lookup (simulating ctx.getCookie() returning 'brand-test-flow')
     const flowId = 'brand-test-flow'
@@ -163,7 +163,7 @@ describe('sendVerificationOTP client branding via auth_flow', () => {
       }),
     )
     const result = await getDidByEmail(email, 'http://core:3000', 'secret')
-    const isNewUser = !result?.did
+    const isNewUser = result!.did === null
 
     const pdsName = 'My PDS'
     await sendOtpCode({

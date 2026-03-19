@@ -30,6 +30,7 @@ import {
 } from '../lib/client-metadata.js'
 import { escapeHtml, createLogger } from '@certified-app/shared'
 import { socialProviders } from '../better-auth.js'
+import { renderError } from '../lib/render-error.js'
 import { buildOtpInputProps } from '../otp-input.js'
 import {
   resolveLoginHint,
@@ -517,13 +518,5 @@ function renderLoginPage(opts: {
     })();
   </script>
 </body>
-</html>`
-}
-
-function renderError(message: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Error</title></head>
-<body><p style="color:red;padding:20px">${escapeHtml(message)}</p></body>
 </html>`
 }

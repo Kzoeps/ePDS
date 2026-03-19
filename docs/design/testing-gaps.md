@@ -83,6 +83,10 @@ pds-core callback, full OAuth flow).
   signCallback round-trip).
 - Pure helper functions within routes (e.g., handle validation in
   `choose-handle.ts`) could be extracted and tested.
+- The `requireBetterAuth` middleware in `account-settings.ts` has a
+  testable `did === null` branch: stub `getDidByEmail` to return
+  `{ did: null }`, hit `GET /account`, and assert the response contains
+  "No account found".
 
 **Recommended strategy:**
 
