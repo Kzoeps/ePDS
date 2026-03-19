@@ -9,18 +9,18 @@ pds-core callback, full OAuth flow).
 
 ## Coverage Summary (as of this analysis)
 
-| Package / Area                | Coverage | Notes                                                                  |
-| ----------------------------- | -------- | ---------------------------------------------------------------------- |
-| `shared/`                     | ~96%     | Near-complete; only `index.ts` re-exports and one logger branch remain |
-| `auth-service/lib/`           | ~77%     | `auto-provision.ts` at 0% (needs live PDS)                             |
-| `auth-service/middleware/`    | ~91%     | `rate-limit.ts` timer cleanup at 82%                                   |
-| `auth-service/email/`         | ~71%     | Template conditional branches partially covered                        |
-| `auth-service/routes/`        | 0%       | All seven route files — see below                                      |
-| `auth-service/better-auth.ts` | 0%       | better-auth wiring — see below                                         |
-| `auth-service/context.ts`     | 0%       | Minimal glue class                                                     |
-| `auth-service/index.ts`       | 0%       | Express app assembly + `main()`                                        |
-| `demo/lib/auth.ts`            | ~51%     | Network-dependent resolution functions                                 |
-| `pds-core/index.ts`           | 0%       | Entire file — see below                                                |
+| Package / Area                | Coverage | Notes                                                                   |
+| ----------------------------- | -------- | ----------------------------------------------------------------------- |
+| `shared/`                     | ~96%     | Near-complete; only `index.ts` re-exports and one logger branch remain  |
+| `auth-service/lib/`           | ~77%     | `auto-provision.ts` at 0% (needs live PDS)                              |
+| `auth-service/middleware/`    | ~95%     | `rate-limit.ts` timer cleanup at 82%; `requireBetterAuth` fully covered |
+| `auth-service/email/`         | ~71%     | Template conditional branches partially covered                         |
+| `auth-service/routes/`        | 0%       | All seven route files — see below                                       |
+| `auth-service/better-auth.ts` | 0%       | better-auth wiring — see below                                          |
+| `auth-service/context.ts`     | 0%       | Minimal glue class                                                      |
+| `auth-service/index.ts`       | 0%       | Express app assembly + `main()`                                         |
+| `demo/lib/auth.ts`            | ~51%     | Network-dependent resolution functions                                  |
+| `pds-core/index.ts`           | 0%       | Entire file — see below                                                 |
 
 ## Areas That Are Genuinely Hard to Unit Test
 
@@ -83,10 +83,10 @@ pds-core callback, full OAuth flow).
   signCallback round-trip).
 - Pure helper functions within routes (e.g., handle validation in
   `choose-handle.ts`) could be extracted and tested.
-- The `requireBetterAuth` middleware in `account-settings.ts` has a
-  testable `did === null` branch: stub `getDidByEmail` to return
-  `{ did: null }`, hit `GET /account`, and assert the response contains
-  "No account found".
+- The `requireBetterAuth` middleware has been extracted to
+  `middleware/require-better-auth.ts` and is fully unit-tested in
+  `require-better-auth.test.ts` (all 5 branches: no session, getSession
+  throws, PDS unavailable, no PDS account, happy path).
 
 **Recommended strategy:**
 
