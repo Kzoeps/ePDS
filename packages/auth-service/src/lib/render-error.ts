@@ -49,6 +49,9 @@ export function renderNoAccountPage(): string {
       We couldn't find a PDS account for this email address.<br>
       To get started, sign in to an app that uses this server first.
     </p>
+    <p class="subtitle">
+      Don't have an account yet? Create one at <a href="https://certified.app">certified.app</a>.
+    </p>
     <a href="/account/login" class="btn-secondary">Try a different email</a>
   </div>
 </body>

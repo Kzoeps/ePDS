@@ -1,93 +1,22 @@
-import { Router, type Request, type Response, type NextFunction } from 'express'
-import type { AuthServiceContext } from '../context.js'
 import {
   createLogger,
-  hashToken,
-  generateVerificationToken,
   escapeHtml,
+  generateVerificationToken,
+  hashToken,
   validateLocalPart,
 } from '@certified-app/shared'
 import { fromNodeHeaders } from 'better-auth/node'
-import { getDidByEmail } from '../lib/get-did-by-email.js'
+import { Router, type Request, type Response } from 'express'
+import type { BetterAuthInstance } from '../better-auth.js'
+import type { AuthServiceContext } from '../context.js'
 import { ensurePdsUrl } from '../lib/pds-url.js'
-import { renderError, renderNoAccountPage } from '../lib/render-error.js'
+import { requireBetterAuth } from '../middleware/require-better-auth.js'
 
 const logger = createLogger('auth:account-settings')
 
-/**
- * Middleware that validates a better-auth session and injects it into res.locals.
- * Also detects email drift (email changed via XRPC outside /account) and
- * signs out the current session when the PDS no longer recognises the session email.
- * If not authenticated, redirects to /account/login.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- better-auth instance has no exported type
-function requireBetterAuth(auth: any, pdsUrl: string, internalSecret: string) {
-  return async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> => {
-    try {
-      const session = await auth.api.getSession({
-        headers: fromNodeHeaders(req.headers),
-      })
-      if (!session?.user?.email) {
-        res.redirect(303, '/account/login')
-        return
-      }
-
-      // Check whether the PDS still recognises this email.
-      // Detects drift caused by email changes via XRPC outside of /account.
-      const result = await getDidByEmail(
-        session.user.email,
-        pdsUrl,
-        internalSecret,
-      )
-
-      if (result === null) {
-        // PDS unavailable — do not touch the session, just show 503
-        res
-          .status(503)
-          .type('html')
-          .send(
-            renderError('Service temporarily unavailable. Please try again.'),
-          )
-        return
-      }
-
-      if (result.did === null) {
-        // No PDS account found for this email — either a genuinely new user who
-        // has never registered via an app, or email drift (email changed on the
-        // PDS out-of-band). We cannot distinguish the two cases without a local
-        // DID mirror, so we treat both the same: sign out the dangling session
-        // and show a clear error page rather than silently redirecting to login.
-        logger.info(
-          { email: session.user.email },
-          'No PDS account found for session email — signing out and showing error',
-        )
-        try {
-          await auth.api.signOut({ headers: fromNodeHeaders(req.headers) })
-        } catch (err) {
-          logger.warn({ err }, 'Failed to sign out on no-account error')
-        }
-        res.status(403).type('html').send(renderNoAccountPage())
-        return
-      }
-
-      // Email is valid and PDS recognises it.
-      res.locals.betterAuthSession = session
-      res.locals.did = result.did
-      next()
-    } catch {
-      res.redirect(303, '/account/login')
-    }
-  }
-}
-
 export function createAccountSettingsRouter(
   ctx: AuthServiceContext,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- better-auth instance has no exported type
-  auth: any,
+  auth: BetterAuthInstance,
 ): Router {
   const router = Router()
 
