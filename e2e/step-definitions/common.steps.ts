@@ -18,6 +18,6 @@ Given('a demo OAuth client is registered', async function (this: EpdsWorld) {
 Given(
   '{string} already has a PDS account',
   async function (this: EpdsWorld, _email: string) {
-    this.skipIfNoMailhog()
+    return this.skipIfNoMailhog()
   },
 )

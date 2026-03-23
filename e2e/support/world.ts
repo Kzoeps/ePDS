@@ -22,15 +22,14 @@ export class EpdsWorld extends World {
    * Call in any step that requires MailHog. If E2E_MAILHOG_URL is not set,
    * marks the step as pending and cucumber-js skips remaining steps in the scenario.
    * When MailHog is available, this is a no-op and the step executes normally.
+   *
+   * In cucumber-js v11+, returning 'pending' from a step marks it as pending.
    */
-  skipIfNoMailhog(): void {
+  skipIfNoMailhog(): 'pending' | void {
     if (!testEnv.mailhogUrl) {
-      return this.pending()
+      return 'pending'
     }
   }
-
-  // cucumber-js injects this at runtime; declare it so TypeScript is satisfied
-  declare pending: () => never
 }
 
 setWorldConstructor(EpdsWorld)
