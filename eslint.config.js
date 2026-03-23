@@ -14,6 +14,8 @@ export default tseslint.config(
       'eslint.config.js',
       '**/next-env.d.ts',
       '**/.next/',
+      // cucumber-js config requires `export default` — ignore rather than override the rule
+      'e2e/cucumber.mjs',
     ],
   },
 
@@ -77,6 +79,19 @@ export default tseslint.config(
     files: ['packages/demo/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-syntax': 'off',
+    },
+  },
+
+  // e2e TypeScript files use a standalone tsconfig not referenced by the root —
+  // disable projectService and point ESLint directly at e2e/tsconfig.e2e.json
+  {
+    files: ['e2e/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: 'e2e/tsconfig.e2e.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
   },
 
