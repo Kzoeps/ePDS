@@ -6,19 +6,23 @@ export class EpdsWorld extends World {
   declare context: BrowserContext
   declare page: Page
 
+  /** OTP code extracted from the most recent email — set by email steps, read by auth steps. */
+  otpCode?: string
+
+  /** Subject line of the most recent email — set by email steps. */
+  lastEmailSubject?: string
+
   get env() {
     return testEnv
   }
 
   /**
-   * Call in any step that requires MailHog. If E2E_MAILHOG_URL is not set,
+   * Call in any step that requires Mailpit. If E2E_MAILPIT_PASS is not set,
    * marks the step as pending and cucumber-js skips remaining steps in the scenario.
-   * When MailHog is available, this is a no-op and the step executes normally.
-   *
-   * In cucumber-js v11+, returning 'pending' from a step marks it as pending.
+   * When Mailpit is available, this is a no-op and the step executes normally.
    */
-  skipIfNoMailhog(): 'pending' | undefined {
-    if (!testEnv.mailhogUrl) {
+  skipIfNoMailpit(): 'pending' | undefined {
+    if (!testEnv.mailpitPass) {
       return 'pending'
     }
   }

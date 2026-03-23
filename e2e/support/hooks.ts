@@ -29,6 +29,17 @@ Before(async function (this: EpdsWorld) {
   this.page.setDefaultTimeout(15_000)
 })
 
+Before(async function () {
+  if (!testEnv.mailpitPass) return
+  const auth = Buffer.from(
+    `${testEnv.mailpitUser}:${testEnv.mailpitPass}`,
+  ).toString('base64')
+  await fetch(`${testEnv.mailpitUrl}/api/v1/messages`, {
+    method: 'DELETE',
+    headers: { Authorization: `Basic ${auth}` },
+  })
+})
+
 After(async function (this: EpdsWorld, scenario) {
   if (scenario.result?.status === Status.FAILED) {
     const safeName = scenario.pickle.name
