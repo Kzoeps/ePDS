@@ -1,18 +1,10 @@
-import {
-  World,
-  type IWorldOptions,
-  setWorldConstructor,
-} from '@cucumber/cucumber'
+import { World, setWorldConstructor } from '@cucumber/cucumber'
 import type { BrowserContext, Page } from '@playwright/test'
 import { testEnv } from './env.js'
 
 export class EpdsWorld extends World {
   declare context: BrowserContext
   declare page: Page
-
-  constructor(options: IWorldOptions) {
-    super(options)
-  }
 
   get env() {
     return testEnv
@@ -25,7 +17,7 @@ export class EpdsWorld extends World {
    *
    * In cucumber-js v11+, returning 'pending' from a step marks it as pending.
    */
-  skipIfNoMailhog(): 'pending' | void {
+  skipIfNoMailhog(): 'pending' | undefined {
     if (!testEnv.mailhogUrl) {
       return 'pending'
     }

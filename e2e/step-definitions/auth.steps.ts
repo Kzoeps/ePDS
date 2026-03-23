@@ -52,14 +52,11 @@ Then(
   },
 )
 
-When(
-  'the user enters the OTP code from the email',
-  async function (this: EpdsWorld) {
-    return this.skipIfNoMailhog()
-  },
-)
+When('the user enters the OTP code from the email', function (this: EpdsWorld) {
+  return this.skipIfNoMailhog()
+})
 
-When('the user enters the OTP code', async function (this: EpdsWorld) {
+When('the user enters the OTP code', function (this: EpdsWorld) {
   return this.skipIfNoMailhog()
 })
 
@@ -154,29 +151,26 @@ Then('the login page renders normally', async function (this: EpdsWorld) {
   await expect(this.page.locator('#email')).toBeVisible()
 })
 
-Then(
-  'the OTP flow still works to completion',
-  async function (this: EpdsWorld) {
-    return this.skipIfNoMailhog()
-  },
-)
+Then('the OTP flow still works to completion', function (this: EpdsWorld) {
+  return this.skipIfNoMailhog()
+})
 
 // --- OTP configuration scenario ---
 
 Given(
   'OTP_FORMAT is set to {string} and OTP_LENGTH is set to {string}',
-  async function (this: EpdsWorld, _format: string, _length: string) {
+  function (this: EpdsWorld, _format: string, _length: string) {
     return this.skipIfNoMailhog()
   },
 )
 
-When('the user requests an OTP', async function (this: EpdsWorld) {
+When('the user requests an OTP', function (this: EpdsWorld) {
   return this.skipIfNoMailhog()
 })
 
 Then(
   'the OTP input field has inputmode={string} \\(not {string}\\)',
-  async function (this: EpdsWorld, _expected: string, _notExpected: string) {
+  function (this: EpdsWorld, _expected: string, _notExpected: string) {
     return this.skipIfNoMailhog()
   },
 )

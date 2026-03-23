@@ -3,6 +3,7 @@ import {
   AfterAll,
   Before,
   After,
+  Status,
   setDefaultTimeout,
 } from '@cucumber/cucumber'
 import { chromium, type Browser } from '@playwright/test'
@@ -29,20 +30,20 @@ Before(async function (this: EpdsWorld) {
 })
 
 After(async function (this: EpdsWorld, scenario) {
-  if (scenario.result?.status === 'FAILED') {
+  if (scenario.result?.status === Status.FAILED) {
     const safeName = scenario.pickle.name
       .replace(/[^a-z0-9]+/gi, '-')
       .replace(/^-|-$/g, '')
       .toLowerCase()
       .slice(0, 100)
-    await this.page?.screenshot({
+    await this.page.screenshot({
       path: `reports/screenshots/${safeName}.png`,
       fullPage: true,
     })
   }
-  await this.context?.close()
+  await this.context.close()
 })
 
 AfterAll(async function () {
-  await sharedBrowser?.close()
+  await sharedBrowser.close()
 })
