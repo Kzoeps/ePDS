@@ -2,7 +2,6 @@ import { Given, When, Then } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 import type { EpdsWorld } from '../support/world.js'
 import { testEnv } from '../support/env.js'
-
 When(
   'the demo client initiates an OAuth login',
   async function (this: EpdsWorld) {
@@ -52,12 +51,23 @@ Then(
   },
 )
 
-When('the user enters the OTP code from the email', function (this: EpdsWorld) {
-  return this.skipIfNoMailhog()
-})
+When(
+  'the user enters the OTP code from the email',
+  async function (this: EpdsWorld) {
+    if (!testEnv.mailpitPass) return 'pending'
+    if (!this.otpCode)
+      throw new Error('No OTP code available — email step must run first')
+    await this.page.fill('#code', this.otpCode)
+    await this.page.click('#form-verify-otp .btn-primary')
+  },
+)
 
-When('the user enters the OTP code', function (this: EpdsWorld) {
-  return this.skipIfNoMailhog()
+When('the user enters the OTP code', async function (this: EpdsWorld) {
+  if (!testEnv.mailpitPass) return 'pending'
+  if (!this.otpCode)
+    throw new Error('No OTP code available — email step must run first')
+  await this.page.fill('#code', this.otpCode)
+  await this.page.click('#form-verify-otp .btn-primary')
 })
 
 Then(
@@ -152,7 +162,7 @@ Then('the login page renders normally', async function (this: EpdsWorld) {
 })
 
 Then('the OTP flow still works to completion', function (this: EpdsWorld) {
-  return this.skipIfNoMailhog()
+  return this.skipIfNoMailpit()
 })
 
 // --- OTP configuration scenario ---
@@ -160,17 +170,17 @@ Then('the OTP flow still works to completion', function (this: EpdsWorld) {
 Given(
   'OTP_FORMAT is set to {string} and OTP_LENGTH is set to {string}',
   function (this: EpdsWorld, _format: string, _length: string) {
-    return this.skipIfNoMailhog()
+    return this.skipIfNoMailpit()
   },
 )
 
 When('the user requests an OTP', function (this: EpdsWorld) {
-  return this.skipIfNoMailhog()
+  return this.skipIfNoMailpit()
 })
 
 Then(
   'the OTP input field has inputmode={string} \\(not {string}\\)',
   function (this: EpdsWorld, _expected: string, _notExpected: string) {
-    return this.skipIfNoMailhog()
+    return this.skipIfNoMailpit()
   },
 )

@@ -18,6 +18,10 @@ export const testEnv = {
   pdsUrl: required('E2E_PDS_URL'),
   authUrl: required('E2E_AUTH_URL'),
   demoUrl: required('E2E_DEMO_URL'),
-  mailhogUrl: process.env.E2E_MAILHOG_URL ?? '',
+  mailpitUrl:
+    process.env.E2E_MAILPIT_URL ??
+    'https://mailpit-e2e-karma-test.up.railway.app',
+  mailpitUser: process.env.E2E_MAILPIT_USER ?? 'karma',
+  mailpitPass: process.env.E2E_MAILPIT_PASS ?? '',
   headless: process.env.E2E_HEADLESS === 'true',
 }
