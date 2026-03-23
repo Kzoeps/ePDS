@@ -1,3 +1,8 @@
+import { config } from 'dotenv'
+import { resolve } from 'node:path'
+
+config({ path: resolve('e2e/.env') })
+
 export const testEnv = {
   pdsUrl: process.env.E2E_PDS_URL ?? 'https://karmas-e2e-pds.up.railway.app',
   authUrl:
