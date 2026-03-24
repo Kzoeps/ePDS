@@ -312,9 +312,9 @@ describe('resolveHandleMode', () => {
     })
   })
 
-  it('returns null when no valid mode is provided at any level', () => {
+  it('returns picker-with-random when no valid mode is provided at any level', () => {
     withEnv(undefined, () => {
-      expect(resolveHandleMode(undefined, {})).toBeNull()
+      expect(resolveHandleMode(undefined, {})).toBe('picker-with-random')
     })
   })
 
@@ -329,13 +329,15 @@ describe('resolveHandleMode', () => {
     })
   })
 
-  it('returns null when all levels have invalid values', () => {
+  it('returns picker-with-random when all levels have invalid values', () => {
     // Cast via unknown to simulate malformed client metadata
     const clientMeta = {
       epds_handle_mode: 'invalid-mode',
     } as unknown as ClientMetadata
     withEnv(undefined, () => {
-      expect(resolveHandleMode('garbage', clientMeta)).toBeNull()
+      expect(resolveHandleMode('garbage', clientMeta)).toBe(
+        'picker-with-random',
+      )
     })
   })
 

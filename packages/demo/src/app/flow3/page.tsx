@@ -5,11 +5,11 @@ import { useState, Suspense } from 'react'
 import { AppLogo } from '../components/AppLogo'
 
 /**
- * Flow 3 test page — "App requests picker-with-random handle mode"
+ * Flow 3 test page — "App requests random handle mode"
  *
- * No email form on the client side. Passes epds_handle_mode=picker-with-random
- * to the auth server, which shows the handle picker with a "Generate random
- * handle" button alongside the free-form input.
+ * No email form on the client side. Passes epds_handle_mode=random to the
+ * auth server, which skips the handle picker entirely and assigns a random
+ * handle server-side.
  */
 
 function Flow3Login() {
@@ -57,7 +57,7 @@ function Flow3Login() {
             marginBottom: '24px',
           }}
         >
-          Flow 3 — picker-with-random handle mode
+          Flow 3 — random handle (server assigns, no picker)
         </p>
 
         {error && (
@@ -75,8 +75,8 @@ function Flow3Login() {
           </div>
         )}
 
-        {/* Passes handle_mode=picker-with-random — auth server shows the handle
-            picker with a "Generate random handle" button. */}
+        {/* Passes handle_mode=random — auth server skips the handle picker
+            and assigns a random handle server-side. */}
         <form
           action="/api/oauth/login"
           method="GET"
@@ -87,7 +87,7 @@ function Flow3Login() {
             }, 0)
           }}
         >
-          <input type="hidden" name="handle_mode" value="picker-with-random" />
+          <input type="hidden" name="handle_mode" value="random" />
           <button
             type="submit"
             disabled={submitting}
@@ -127,7 +127,7 @@ function Flow3Login() {
         <a
           href="/"
           style={{
-            display: 'inline-block',
+            display: 'block',
             marginTop: '16px',
             color: '#6b7280',
             fontSize: '13px',
@@ -135,6 +135,30 @@ function Flow3Login() {
           }}
         >
           Switch to Flow 1 (email form)
+        </a>
+        <a
+          href="/flow2"
+          style={{
+            display: 'block',
+            marginTop: '8px',
+            color: '#6b7280',
+            fontSize: '13px',
+            textDecoration: 'none',
+          }}
+        >
+          Switch to Flow 2 (no email form)
+        </a>
+        <a
+          href="/flow4"
+          style={{
+            display: 'block',
+            marginTop: '8px',
+            color: '#6b7280',
+            fontSize: '13px',
+            textDecoration: 'none',
+          }}
+        >
+          Switch to Flow 4 (plain picker)
         </a>
       </div>
     </div>

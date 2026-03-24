@@ -73,7 +73,7 @@ export function resolveHandleMode(
       return raw as HandleMode
     }
   }
-  return null
+  return 'picker-with-random'
 }
 
 export function createLoginPageRouter(ctx: AuthServiceContext): Router {

@@ -219,26 +219,38 @@ function LoginForm() {
         <a
           href="/flow2"
           style={{
-            display: 'inline-block',
+            display: 'block',
             marginTop: '8px',
             color: '#9ca3af',
             fontSize: '12px',
             textDecoration: 'none',
           }}
         >
-          Test Flow 2 (no email form)
+          Test Flow 2 (no email form, picker-with-random)
         </a>
         <a
           href="/flow3"
           style={{
-            display: 'inline-block',
+            display: 'block',
             marginTop: '4px',
             color: '#9ca3af',
             fontSize: '12px',
             textDecoration: 'none',
           }}
         >
-          Test Flow 3 (picker-with-random)
+          Test Flow 3 (random handle)
+        </a>
+        <a
+          href="/flow4"
+          style={{
+            display: 'block',
+            marginTop: '4px',
+            color: '#9ca3af',
+            fontSize: '12px',
+            textDecoration: 'none',
+          }}
+        >
+          Test Flow 4 (plain picker)
         </a>
       </div>
     </div>

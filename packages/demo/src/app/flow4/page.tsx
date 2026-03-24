@@ -5,13 +5,14 @@ import { useState, Suspense } from 'react'
 import { AppLogo } from '../components/AppLogo'
 
 /**
- * Flow 2 test page — "App has a simple login button"
+ * Flow 4 test page — "App requests plain picker handle mode"
  *
- * No email form on the client side. The client sends PAR with no login_hint,
- * so the auth server's own email form is shown to the user.
+ * No email form on the client side. Passes epds_handle_mode=picker to the
+ * auth server, which shows the handle picker with free-form input only —
+ * no "Generate random handle" button.
  */
 
-function Flow2Login() {
+function Flow4Login() {
   const searchParams = useSearchParams()
   const error = searchParams.get('error')
   const [submitting, setSubmitting] = useState(false)
@@ -56,7 +57,7 @@ function Flow2Login() {
             marginBottom: '24px',
           }}
         >
-          Flow 2 — auth server collects email (picker-with-random default)
+          Flow 4 — plain picker (user must choose a handle)
         </p>
 
         {error && (
@@ -74,7 +75,8 @@ function Flow2Login() {
           </div>
         )}
 
-        {/* No email field — just a login button. No login_hint sent to PAR. */}
+        {/* Passes handle_mode=picker — auth server shows the handle picker
+            with free-form input only, no "Generate random handle" button. */}
         <form
           action="/api/oauth/login"
           method="GET"
@@ -85,6 +87,7 @@ function Flow2Login() {
             }, 0)
           }}
         >
+          <input type="hidden" name="handle_mode" value="picker" />
           <button
             type="submit"
             disabled={submitting}
@@ -134,6 +137,18 @@ function Flow2Login() {
           Switch to Flow 1 (email form)
         </a>
         <a
+          href="/flow2"
+          style={{
+            display: 'block',
+            marginTop: '8px',
+            color: '#6b7280',
+            fontSize: '13px',
+            textDecoration: 'none',
+          }}
+        >
+          Switch to Flow 2 (no email form)
+        </a>
+        <a
           href="/flow3"
           style={{
             display: 'block',
@@ -145,27 +160,15 @@ function Flow2Login() {
         >
           Switch to Flow 3 (random handle)
         </a>
-        <a
-          href="/flow4"
-          style={{
-            display: 'block',
-            marginTop: '8px',
-            color: '#6b7280',
-            fontSize: '13px',
-            textDecoration: 'none',
-          }}
-        >
-          Switch to Flow 4 (plain picker)
-        </a>
       </div>
     </div>
   )
 }
 
-export default function Flow2Page() {
+export default function Flow4Page() {
   return (
     <Suspense>
-      <Flow2Login />
+      <Flow4Login />
     </Suspense>
   )
 }
