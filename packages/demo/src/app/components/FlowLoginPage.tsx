@@ -120,9 +120,8 @@ function FlowLogin({ subtitle, handleMode, navLinks }: FlowLoginPageProps) {
                 <img
                   src="/certified-logo.png"
                   alt=""
-                  style={{ height: '20px' }}
+                  style={{ height: '20px', marginRight: '12px' }}
                 />
-                <span style={{ width: '12px', display: 'inline-block' }}></span>
                 Sign in with Certified
               </>
             )}
