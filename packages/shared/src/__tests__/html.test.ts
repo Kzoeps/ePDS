@@ -57,11 +57,19 @@ describe('maskEmail', () => {
 })
 
 describe('formatOtpPlain', () => {
-  it('returns codes shorter than 8 chars as-is', () => {
+  it('returns codes shorter than 6 chars as-is', () => {
     expect(formatOtpPlain('1234')).toBe('1234')
   })
 
-  it('returns a 7-char code as-is (just under the threshold)', () => {
+  it('returns a 5-char code as-is (just under the threshold)', () => {
+    expect(formatOtpPlain('12345')).toBe('12345')
+  })
+
+  it('groups a 6-char code into two groups of 3', () => {
+    expect(formatOtpPlain('123456')).toBe('123 456')
+  })
+
+  it('returns a 7-char code as-is (does not divide evenly by 4 or 3)', () => {
     expect(formatOtpPlain('1234567')).toBe('1234567')
   })
 
@@ -87,8 +95,18 @@ describe('formatOtpPlain', () => {
 })
 
 describe('formatOtpHtmlGrouped', () => {
-  it('returns codes shorter than 8 chars as an escaped flat string', () => {
+  it('returns codes shorter than 6 chars as an escaped flat string', () => {
     expect(formatOtpHtmlGrouped('1234')).toBe('1234')
+  })
+
+  it('returns a 5-char code as a flat escaped string (just under threshold)', () => {
+    expect(formatOtpHtmlGrouped('12345')).toBe('12345')
+  })
+
+  it('wraps a 6-char code in two spans of 3', () => {
+    expect(formatOtpHtmlGrouped('123456')).toBe(
+      '<span>123</span><span style="padding-left:0.35em">456</span>',
+    )
   })
 
   it('wraps an 8-char code in two spans, second with padding-left', () => {
@@ -126,7 +144,7 @@ describe('formatOtpHtmlGrouped', () => {
   })
 
   it('escapes < inside grouped spans (XSS, grouping path)', () => {
-    // 8 chars containing '<' — grouping applies, chunks must be escaped
+    // 8 chars containing '<' — grouping applies (>= 6), chunks must be escaped
     expect(formatOtpHtmlGrouped('1234<678')).toBe(
       '<span>1234</span><span style="padding-left:0.35em">&lt;678</span>',
     )

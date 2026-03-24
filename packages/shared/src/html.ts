@@ -15,11 +15,11 @@ export function maskEmail(email: string): string {
 
 /**
  * Returns the group size to use for OTP display, or null if no grouping applies.
- * Only groups codes of length 8 or more.
+ * Only groups codes of length 6 or more.
  * Tries groups of 4 first, then groups of 3.
  */
 function otpGroupSize(length: number): number | null {
-  if (length < 8) return null
+  if (length < 6) return null
   if (length % 4 === 0) return 4
   if (length % 3 === 0) return 3
   return null
@@ -33,10 +33,10 @@ function chunkString(s: string, size: number): string[] {
 
 /**
  * Format an OTP code for plain-text display (subject lines, plain-text email bodies).
- * Groups codes of length >= 8 with spaces where possible (groups of 4, then 3).
- * Lengths that don't divide evenly, or are under 8, are returned as-is.
+ * Groups codes of length >= 6 with spaces where possible (groups of 4, then 3).
+ * Lengths that don't divide evenly, or are under 6, are returned as-is.
  *
- * Examples: 8 → "1234 5678", 9 → "123 456 789", 12 → "1234 5678 9012"
+ * Examples: 6 → "123 456", 8 → "1234 5678", 9 → "123 456 789", 12 → "1234 5678 9012"
  */
 export function formatOtpPlain(code: string): string {
   const groupSize = otpGroupSize(code.length)
@@ -46,12 +46,12 @@ export function formatOtpPlain(code: string): string {
 
 /**
  * Format an OTP code for display inside an HTML email.
- * Groups codes of length >= 8 using <span> elements with a CSS gap between
+ * Groups codes of length >= 6 using <span> elements with a CSS gap between
  * them — no separator character exists in the DOM so copy-paste yields the
- * flat code. Lengths that don't divide evenly, or are under 8, are returned
+ * flat code. Lengths that don't divide evenly, or are under 6, are returned
  * as HTML-escaped flat strings.
  *
- * Examples: 8 → two spans "1234" + "5678", 9 → three spans "123"+"456"+"789"
+ * Examples: 6 → two spans "123"+"456", 8 → two spans "1234"+"5678", 9 → three spans "123"+"456"+"789"
  */
 export function formatOtpHtmlGrouped(code: string): string {
   const groupSize = otpGroupSize(code.length)
