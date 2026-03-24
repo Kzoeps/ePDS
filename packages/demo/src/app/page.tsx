@@ -228,6 +228,18 @@ function LoginForm() {
         >
           Test Flow 2 (no email form)
         </a>
+        <a
+          href="/flow3"
+          style={{
+            display: 'inline-block',
+            marginTop: '4px',
+            color: '#9ca3af',
+            fontSize: '12px',
+            textDecoration: 'none',
+          }}
+        >
+          Test Flow 3 (picker-with-random)
+        </a>
       </div>
     </div>
   )

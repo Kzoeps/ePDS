@@ -4,6 +4,10 @@
  * Accepts ?email=... or ?handle=... query params. If neither is provided,
  * the auth server collects credentials itself (Flow 2).
  *
+ * Optional ?handle_mode=... (e.g. picker-with-random) is forwarded to the
+ * auth server as epds_handle_mode, overriding the default handle assignment
+ * mode for the session.
+ *
  * Flow:
  * 1. Generate PKCE code verifier/challenge + DPoP key pair + state
  * 2. Send Pushed Authorization Request (PAR) to PDS
@@ -60,6 +64,7 @@ export async function GET(request: Request) {
     const handle = (url.searchParams.get('handle') || '')
       .replace(/^@/, '')
       .trim()
+    const handleMode = url.searchParams.get('handle_mode') || ''
 
     // Input validation
     // Note: email and handle are both optional — omitting both triggers Flow 2
@@ -183,7 +188,10 @@ export async function GET(request: Request) {
         const loginHint = email
           ? `&login_hint=${encodeURIComponent(email)}`
           : ''
-        const authUrl = `${authEndpoint}?client_id=${encodeURIComponent(clientId)}&request_uri=${encodeURIComponent(parData2.request_uri)}${loginHint}`
+        const handleModeParam = handleMode
+          ? `&epds_handle_mode=${encodeURIComponent(handleMode)}`
+          : ''
+        const authUrl = `${authEndpoint}?client_id=${encodeURIComponent(clientId)}&request_uri=${encodeURIComponent(parData2.request_uri)}${loginHint}${handleModeParam}`
         console.log('[oauth/login] Redirecting to auth (after nonce retry)')
         const resp2 = NextResponse.redirect(authUrl)
         resp2.cookies.set(oauthCookie.name, oauthCookie.value, {
@@ -203,7 +211,10 @@ export async function GET(request: Request) {
     const loginHintParam = email
       ? `&login_hint=${encodeURIComponent(email)}`
       : ''
-    const authUrl = `${authEndpoint}?client_id=${encodeURIComponent(clientId)}&request_uri=${encodeURIComponent(parData.request_uri)}${loginHintParam}`
+    const handleModeParam = handleMode
+      ? `&epds_handle_mode=${encodeURIComponent(handleMode)}`
+      : ''
+    const authUrl = `${authEndpoint}?client_id=${encodeURIComponent(clientId)}&request_uri=${encodeURIComponent(parData.request_uri)}${loginHintParam}${handleModeParam}`
 
     console.log('[oauth/login] Redirecting to auth')
     const response = NextResponse.redirect(authUrl)

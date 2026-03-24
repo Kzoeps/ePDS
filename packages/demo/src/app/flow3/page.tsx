@@ -5,13 +5,14 @@ import { useState, Suspense } from 'react'
 import { AppLogo } from '../components/AppLogo'
 
 /**
- * Flow 2 test page — "App has a simple login button"
+ * Flow 3 test page — "App requests picker-with-random handle mode"
  *
- * No email form on the client side. The client sends PAR with no login_hint,
- * so the auth server's own email form is shown to the user.
+ * No email form on the client side. Passes epds_handle_mode=picker-with-random
+ * to the auth server, which shows the handle picker with a "Generate random
+ * handle" button alongside the free-form input.
  */
 
-function Flow2Login() {
+function Flow3Login() {
   const searchParams = useSearchParams()
   const error = searchParams.get('error')
   const [submitting, setSubmitting] = useState(false)
@@ -56,7 +57,7 @@ function Flow2Login() {
             marginBottom: '24px',
           }}
         >
-          Flow 2 — auth server collects email
+          Flow 3 — picker-with-random handle mode
         </p>
 
         {error && (
@@ -74,7 +75,8 @@ function Flow2Login() {
           </div>
         )}
 
-        {/* No email field — just a login button. No login_hint sent to PAR. */}
+        {/* Passes handle_mode=picker-with-random — auth server shows the handle
+            picker with a "Generate random handle" button. */}
         <form
           action="/api/oauth/login"
           method="GET"
@@ -85,6 +87,7 @@ function Flow2Login() {
             }, 0)
           }}
         >
+          <input type="hidden" name="handle_mode" value="picker-with-random" />
           <button
             type="submit"
             disabled={submitting}
@@ -133,27 +136,15 @@ function Flow2Login() {
         >
           Switch to Flow 1 (email form)
         </a>
-        <a
-          href="/flow3"
-          style={{
-            display: 'inline-block',
-            marginTop: '8px',
-            color: '#6b7280',
-            fontSize: '13px',
-            textDecoration: 'none',
-          }}
-        >
-          Switch to Flow 3 (picker-with-random)
-        </a>
       </div>
     </div>
   )
 }
 
-export default function Flow2Page() {
+export default function Flow3Page() {
   return (
     <Suspense>
-      <Flow2Login />
+      <Flow3Login />
     </Suspense>
   )
 }
