@@ -41,6 +41,7 @@ import {
   fetchParLoginHint,
 } from '../lib/resolve-login-hint.js'
 import { ensurePdsUrl } from '../lib/pds-url.js'
+import { getDidByEmail } from '../lib/get-did-by-email.js'
 
 const logger = createLogger('auth:login-page')
 
@@ -192,6 +193,12 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
     const hasLoginHint = !!resolvedEmail
     const initialStep = hasLoginHint ? 'otp' : 'email'
 
+    // Determine if this is a new user when we already know the email (login_hint path).
+    // null means unknown — no login_hint was provided, Path B will handle it later.
+    const isNewUser: boolean | null = resolvedEmail
+      ? !(await getDidByEmail(resolvedEmail, pdsInternalUrl, internalSecret))
+      : null
+
     // Pillar 3 — Idempotency (Option A): when this is a duplicate GET for an
     // existing flow (e.g. browser extension, StayFocusd), tell the client-side
     // script that OTP was already sent so it skips the auto-send.
@@ -222,6 +229,7 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
         loginHint: emailHint,
         initialStep,
         otpAlreadySent,
+        isNewUser,
         csrfToken: res.locals.csrfToken,
         authBasePath: '/api/auth',
         pdsPublicUrl: ctx.config.pdsPublicUrl,
@@ -242,6 +250,7 @@ function renderLoginPage(opts: {
   loginHint: string
   initialStep: 'email' | 'otp'
   otpAlreadySent: boolean
+  isNewUser: boolean | null
   csrfToken: string
   authBasePath: string
   pdsPublicUrl: string
@@ -330,6 +339,10 @@ function renderLoginPage(opts: {
     .step-email.hidden { display: none; }
     .recovery-link { display: block; margin-top: 16px; color: #888; font-size: 13px; text-decoration: none; }
     .recovery-link:hover { color: #555; }
+    .tos-field { text-align: left; margin-bottom: 16px; }
+    .tos-label { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; cursor: pointer; color: #333; line-height: 1.4; }
+    .tos-label input[type=checkbox] { margin-top: 2px; flex-shrink: 0; accent-color: ${escapeHtml(brandColor)}; width: 15px; height: 15px; cursor: pointer; }
+    .tos-label a { color: ${escapeHtml(brandColor)}; text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -372,6 +385,16 @@ function renderLoginPage(opts: {
                  autocapitalize="${inputProps.autocapitalize}"
                   oninput="this.value=this.value.replace(/[\\s-]/g,'')"
                  style="letter-spacing: ${Math.max(2, Math.round(32 / opts.otpLength))}px">
+        </div>
+        <div id="tos-field" class="field tos-field" style="display:none;">
+          <label class="tos-label">
+            <input type="checkbox" id="tos-accept">
+            <span>I agree to the
+              <a href="https://certified.app/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>
+              and
+              <a href="https://certified.app/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+            </span>
+          </label>
         </div>
         <button type="submit" class="btn-primary">Verify</button>
       </form>
@@ -493,6 +516,7 @@ function renderLoginPage(opts: {
         clearError();
         var otp = document.getElementById('code').value.trim();
         var btn = this.querySelector('button[type=submit]');
+
         btn.disabled = true;
         btn.textContent = 'Verifying...';
 
@@ -535,6 +559,12 @@ function renderLoginPage(opts: {
       var loginHint = ${JSON.stringify(opts.loginHint)};
       var initialStep = ${JSON.stringify(opts.initialStep)};
       var otpAlreadySent = ${JSON.stringify(opts.otpAlreadySent)};
+      var isNewUser = ${JSON.stringify(opts.isNewUser)};
+
+      if (isNewUser === true) {
+        document.getElementById('tos-field').style.display = 'block';
+        document.getElementById('tos-accept').required = true;
+      }
 
       if (initialStep === 'otp' && loginHint) {
         currentEmail = loginHint;
