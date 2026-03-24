@@ -209,8 +209,15 @@ prompt_smtp() {
 
   read -rep "SMTP username (blank for none): " -i "$existing_user" smtp_user
   if [ -n "$smtp_user" ]; then
-    read -rsp "SMTP password: " -i "$existing_pass" smtp_pass
+    local pass_prompt="SMTP password"
+    if [ -n "$existing_pass" ]; then
+      pass_prompt="SMTP password (press Enter to keep existing)"
+    fi
+    read -rsp "${pass_prompt}: " smtp_pass
     echo ""
+    if [ -z "$smtp_pass" ] && [ -n "$existing_pass" ]; then
+      smtp_pass="$existing_pass"
+    fi
   else
     smtp_pass=""
   fi
