@@ -2,9 +2,13 @@ name: E2E tests
 on:
   deployment_status:
     states: [success]
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      pull-requests: read
     if: |
       github.event.deployment_status.state == 'success' &&
       github.event.deployment.transient_environment == true
@@ -17,13 +21,18 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: npx playwright install --with-deps chromium
+
       - name: Extract PR number
         id: meta
         run: |
           ENV="${{ github.event.deployment.environment }}"
-          PR_NUMBER=$(echo "$ENV" | grep -oP '(?<=pr-)\d+')
-          [ -z "$PR_NUMBER" ] && echo "Could not parse PR number from: $ENV" && exit 1
+          PR_NUMBER=$(echo "$ENV" | grep -oP '(?<=pr-)\d+' || true)
+          if [ -z "$PR_NUMBER" ]; then
+            echo "::error::Could not parse PR number from environment: $ENV"
+            exit 1
+          fi
           echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+
       - name: Derive service URLs
         id: urls
         env:
@@ -33,25 +42,27 @@ jobs:
           echo "auth_url=https://certified-appauth-service-epds-pr-${PR}.up.railway.app" >> $GITHUB_OUTPUT
           echo "demo_url=https://certified-appdemo-epds-pr-${PR}.up.railway.app" >> $GITHUB_OUTPUT
           echo "mailpit_url=https://mailpit-epds-pr-${PR}.up.railway.app" >> $GITHUB_OUTPUT
-      - name: Wait for all four services
+
+      - name: Wait for all services
         run: |
           check() {
-            URL=$1
+            local URL=$1
             for i in $(seq 1 30); do
               if curl -sf "$URL" > /dev/null 2>&1; then
-                echo "$URL is up"
+                echo "✓ $URL is up"
                 return 0
               fi
-              echo "Attempt $i failed, retrying in 10s..."
+              echo "  Attempt $i/30 failed, retrying in 10s..."
               sleep 10
             done
-            echo "$URL timed out"
+            echo "::error::$URL timed out after 5 minutes"
             exit 1
           }
           check "${{ steps.urls.outputs.epds_url }}/xrpc/_health"
           check "${{ steps.urls.outputs.auth_url }}/health"
           check "${{ steps.urls.outputs.demo_url }}"
           check "${{ steps.urls.outputs.mailpit_url }}/readyz"
+
       - name: Run e2e suite
         env:
           E2E_PDS_URL: ${{ steps.urls.outputs.epds_url }}
@@ -62,3 +73,11 @@ jobs:
           E2E_MAILPIT_PASS: ${{ secrets.E2E_MAILPIT_PASS }}
           E2E_HEADLESS: 'true'
         run: pnpm test:e2e:ci
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 2
