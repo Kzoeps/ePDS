@@ -1,7 +1,10 @@
-import { When, Then } from '@cucumber/cucumber'
+import { Given, When, Then } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 import type { EpdsWorld } from '../support/world.js'
 import { testEnv } from '../support/env.js'
+import { waitForEmail, extractOtp, clearMailpit } from '../support/mailpit.js'
+import { sharedBrowser } from '../support/hooks.js'
+import { createAccountViaOAuth } from './common.steps.js'
 When(
   'the demo client initiates an OAuth login',
   async function (this: EpdsWorld) {
@@ -202,3 +205,135 @@ Then('the login page renders normally', async function (this: EpdsWorld) {
 Then('the OTP flow still works to completion', function (this: EpdsWorld) {
   return this.skipIfNoMailpit()
 })
+
+// --- Login hint resolution scenarios ---
+
+/**
+ * Initiates OAuth via the demo app's login API route with a login_hint.
+ *
+ * The Gherkin hint value is used only to determine the hint type:
+ *   - email (contains @): navigates to /api/oauth/login?email=<world.testEmail>
+ *   - handle (contains . but no @): navigates to /api/oauth/login?handle=<world.userHandle>
+ *   - DID (starts with "did:"): not supported by the demo — return pending
+ *
+ * The REAL values from world (testEmail, userHandle) are used, not the
+ * literal Gherkin strings.
+ */
+When(
+  'the demo client initiates OAuth with login_hint={string}',
+  async function (this: EpdsWorld, hint: string) {
+    if (hint.startsWith('did:')) {
+      // Demo does not support DID login hints — requires custom PAR client
+      return 'pending'
+    }
+
+    let url: string
+    if (hint.includes('@')) {
+      // Email hint — use the real test email from world
+      if (!this.testEmail) {
+        throw new Error(
+          'No test email set — background account creation step must run first',
+        )
+      }
+      url = `${testEnv.demoUrl}/api/oauth/login?email=${encodeURIComponent(this.testEmail)}`
+    } else {
+      // Handle hint — use the real handle from world
+      if (!this.userHandle) {
+        throw new Error(
+          'No user handle set — background account creation step must run first',
+        )
+      }
+      // Strip leading @ if present (userHandle may include it)
+      const handle = this.userHandle.startsWith('@')
+        ? this.userHandle.slice(1)
+        : this.userHandle
+      url = `${testEnv.demoUrl}/api/oauth/login?handle=${encodeURIComponent(handle)}`
+    }
+
+    await this.page.goto(url)
+  },
+)
+
+/**
+ * Asserts that the auth service rendered the OTP step directly,
+ * skipping the email form (login_hint was resolved successfully).
+ */
+Then(
+  'the login page renders directly at the OTP verification step',
+  async function (this: EpdsWorld) {
+    await expect(this.page.locator('#step-otp.active')).toBeVisible({
+      timeout: 30_000,
+    })
+    await expect(this.page.locator('#step-email')).not.toBeVisible()
+  },
+)
+
+/**
+ * Polls Mailpit for the OTP email that was auto-sent when the login_hint
+ * was resolved. Uses world.testEmail (the real email), not the literal
+ * Gherkin string. Stores the OTP code on world for subsequent steps.
+ */
+Then(
+  'an OTP email is auto-sent to {string}',
+  async function (this: EpdsWorld, _email: string) {
+    if (!testEnv.mailpitPass) return 'pending'
+    if (!this.testEmail) {
+      throw new Error(
+        'No test email set — background account creation step must run first',
+      )
+    }
+    const message = await waitForEmail(`to:${this.testEmail}`)
+    this.lastEmailSubject = message.Subject
+    this.otpCode = extractOtp(message.Subject)
+  },
+)
+
+/**
+ * No-op — the real DID is already captured on world.userDid from the
+ * Background step. The literal Gherkin DID value is ignored.
+ */
+Given("alice's DID is {string}", function (this: EpdsWorld, _did: string) {
+  // No-op: world.userDid is already set by the Background step
+})
+
+/**
+ * Pending — constructing a custom PAR request with DPoP is out of scope.
+ */
+When(
+  'the demo client submits login_hint in the PAR request body (not the redirect URL)',
+  function (this: EpdsWorld) {
+    return 'pending'
+  },
+)
+
+/**
+ * Pending — depends on PAR body hint step above.
+ */
+Then(
+  'the auth service retrieves the hint from the stored PAR request',
+  function (this: EpdsWorld) {
+    return 'pending'
+  },
+)
+
+/**
+ * Pending — depends on PAR body hint step above.
+ */
+Then(
+  'the login page renders at the OTP step with the hint resolved',
+  function (this: EpdsWorld) {
+    return 'pending'
+  },
+)
+
+/**
+ * Asserts that the auth service showed the email input form because the
+ * login_hint could not be resolved (unknown handle/email).
+ */
+Then(
+  'the login page shows the email input form (hint could not be resolved)',
+  async function (this: EpdsWorld) {
+    await expect(this.page.locator('#email')).toBeVisible({ timeout: 30_000 })
+    await expect(this.page.locator('#step-otp')).not.toHaveClass(/active/)
+  },
+)
