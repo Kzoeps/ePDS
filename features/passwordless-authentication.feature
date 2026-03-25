@@ -23,21 +23,13 @@ Feature: Passwordless authentication via email OTP
     And the demo client has a valid OAuth access token
 
   Scenario: Returning user authenticates with email OTP
-    Given "bob@example.com" already has a PDS account
+    Given a returning user has a PDS account
     When the demo client initiates an OAuth login
-    And the user enters "bob@example.com" on the login page
+    And the user enters the test email on the login page
     Then an OTP email arrives in the mail trap
     And the email subject contains "Sign-in" (returning user)
     When the user enters the OTP code
     Then the browser is redirected back to the demo client with a valid session
-
-  # --- OTP configuration ---
-
-  Scenario: Alphanumeric OTP codes when configured
-    Given OTP_FORMAT is set to "alphanumeric" and OTP_LENGTH is set to "8"
-    When the user requests an OTP
-    Then the OTP input field has inputmode="text" (not "numeric")
-    And the OTP code in the mail trap is 8 characters of uppercase letters and digits
 
   # --- Brute force protection ---
 

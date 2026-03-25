@@ -1,8 +1,9 @@
 import { World, setWorldConstructor } from '@cucumber/cucumber'
-import type { BrowserContext, Page } from '@playwright/test'
+import type { Browser, BrowserContext, Page } from '@playwright/test'
 import { testEnv } from './env.js'
 
 export class EpdsWorld extends World {
+  declare browser: Browser
   declare context: BrowserContext
   declare page: Page
 

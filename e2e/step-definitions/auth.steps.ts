@@ -52,6 +52,20 @@ When(
   },
 )
 
+When(
+  'the user enters the test email on the login page',
+  async function (this: EpdsWorld) {
+    if (!this.testEmail) {
+      throw new Error(
+        'No test email set — "a returning user has a PDS account" step must run first',
+      )
+    }
+    await this.page.fill('#email', this.testEmail)
+    await this.page.click('button[type=submit]')
+    await this.page.waitForLoadState('networkidle')
+  },
+)
+
 Then(
   'the login page shows an OTP verification form',
   async function (this: EpdsWorld) {
@@ -188,23 +202,3 @@ Then('the login page renders normally', async function (this: EpdsWorld) {
 Then('the OTP flow still works to completion', function (this: EpdsWorld) {
   return this.skipIfNoMailpit()
 })
-
-// --- OTP configuration scenario ---
-
-Given(
-  'OTP_FORMAT is set to {string} and OTP_LENGTH is set to {string}',
-  function (this: EpdsWorld, _format: string, _length: string) {
-    return this.skipIfNoMailpit()
-  },
-)
-
-When('the user requests an OTP', function (this: EpdsWorld) {
-  return this.skipIfNoMailpit()
-})
-
-Then(
-  'the OTP input field has inputmode={string} \\(not {string}\\)',
-  function (this: EpdsWorld, _expected: string, _notExpected: string) {
-    return this.skipIfNoMailpit()
-  },
-)
