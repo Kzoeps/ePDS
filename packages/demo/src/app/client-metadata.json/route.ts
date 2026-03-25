@@ -26,6 +26,7 @@ export function GET() {
     dpop_bound_access_tokens: true,
     brand_color: '#2563eb',
     background_color: '#f8f9fa',
+    epds_skip_consent_on_signup: true,
   }
 
   return NextResponse.json(metadata, {

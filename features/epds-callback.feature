@@ -11,19 +11,29 @@ Feature: ePDS callback — the core integration bridge
     Given the ePDS test environment is running
     And a demo OAuth client is registered
 
-  Scenario: Successful callback for a new user creates an account and completes OAuth
+  Scenario: Callback for a new user creates an account and redirects to consent
     Given no PDS account exists for "newuser@example.com"
+    When the user completes OTP authentication as "newuser@example.com"
+    Then the auth service redirects to /oauth/epds-callback with a signed URL
+    And the PDS creates a new account
+    And the browser is redirected to /oauth/authorize with prompt=consent
+    And the upstream consent UI is shown with actual OAuth scopes
+
+  Scenario: Callback for a new user skips consent when configured
+    Given no PDS account exists for "newuser@example.com"
+    And PDS_SIGNUP_ALLOW_CONSENT_SKIP is "true"
+    And the demo client is trusted and has epds_skip_consent_on_signup: true
     When the user completes OTP authentication as "newuser@example.com"
     Then the auth service redirects to /oauth/epds-callback with a signed URL
     And the PDS creates a new account
     And the browser is redirected back to the demo client with an authorization code
     And the demo client exchanges the code for an access token
 
-  Scenario: Successful callback for an existing user completes OAuth
+  Scenario: Callback for an existing user redirects to authorize
     Given "existing@example.com" has a PDS account
     When the user completes OTP authentication as "existing@example.com"
     Then the auth service redirects to /oauth/epds-callback
-    And the browser is redirected back to the demo client with an authorization code
+    And the browser is redirected to /oauth/authorize for consent or auto-approval
 
   Scenario: Tampered callback URL is rejected
     When a request arrives at /oauth/epds-callback with a modified email parameter

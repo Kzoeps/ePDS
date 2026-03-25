@@ -135,14 +135,26 @@ more than the timeout duration.
 The right fix is to upstream a public keepalive/refresh API on
 `@atproto/oauth-provider`.
 
-### 8. OAuth consent tracking
+### 8. OAuth consent tracking (consent-skip path)
 
 **File:** `packages/pds-core/src/index.ts`
 
-- `provider.checkConsentRequired(parameters, clientData)` — assumed to
-  return a boolean
+When `PDS_SIGNUP_ALLOW_CONSENT_SKIP` is enabled, the consent-skip code path
+uses several provider internals to issue an authorization code directly:
+
+- `provider.clientManager.getClient(clientId)` — fetches the `Client` object.
+  The returned `client.info.isTrusted` boolean is used to gate consent-skip.
+  `clientManager` is a `public readonly` property but `ClientManager` and
+  `Client` are not re-exported.
+- `provider.requestManager.get(requestUri, deviceId)` — binds the device to
+  the PAR request (same as item 1 above).
+- `provider.requestManager.setAuthorized(requestUri, client, account, deviceId, deviceMetadata)` —
+  issues the authorization code (same as item 1 above).
 - `provider.accountManager.setAuthorizedClient(account, client, { authorizedScopes })` —
-  assumed signature for recording consent
+  records the client as authorized so future logins can auto-approve.
+
+The normal (non-skip) consent path delegates to the stock `/oauth/authorize`
+endpoint and does not use these internals.
 
 ### 9. `provider.metadata`
 

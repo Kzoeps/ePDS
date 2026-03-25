@@ -126,6 +126,28 @@ middleware requires its own session state, we may need to ensure that the
 device session created by `upsertDeviceAccount` is sufficient for the
 middleware to recognize the user as authenticated.
 
+### Consent-Skip on Sign-Up
+
+For trusted clients, a new user flow can optionally skip the consent screen
+entirely on initial sign-up. This requires all three conditions:
+
+1. **`PDS_SIGNUP_ALLOW_CONSENT_SKIP=true`** in the PDS environment
+2. **Client is trusted** — listed in `PDS_OAUTH_TRUSTED_CLIENTS`
+3. **Client metadata** includes `"epds_skip_consent_on_signup": true`
+
+When all conditions are met, `epds-callback` issues the authorization code
+directly (via `requestManager.setAuthorized()`) and records the client's
+scopes as authorized (via `setAuthorizedClient()`). The browser goes straight
+to the client app without any intermediate screen.
+
+When consent-skip does NOT apply (e.g. untrusted client, env var disabled),
+new users are redirected to `/oauth/authorize?prompt=consent`, which skips
+the account selection screen (unnecessary for a just-created account) and
+shows the upstream consent UI directly.
+
+Existing users always go through the normal `/oauth/authorize` flow (no
+`prompt` override) which auto-approves or shows consent as appropriate.
+
 ### What This Fixes
 
 - Consent page shows actual requested scopes (from upstream `consent-view.tsx`)
@@ -134,6 +156,7 @@ middleware to recognize the user as authenticated.
 - No more hard-coded "Read and write posts" etc.
 - No more separate `client_login` table
 - New users see consent at the right time (determined by the provider)
+- Trusted clients can skip consent on sign-up (opt-in, triple-gated)
 - Removes ~250 lines of auth-service code (`consent.ts` + DB methods)
 
 ### Research Findings (Resolved Questions)

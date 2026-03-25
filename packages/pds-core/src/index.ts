@@ -32,6 +32,7 @@ import {
   verifyCallback,
   escapeHtml,
   validateLocalPart,
+  resolveClientMetadata,
 } from '@certified-app/shared'
 
 const logger = createLogger('pds-core')
@@ -66,6 +67,12 @@ async function main() {
 
   const epdsCallbackSecret =
     process.env.EPDS_CALLBACK_SECRET || 'dev-callback-secret-change-me'
+
+  // When true, consent may be skipped on initial sign-up for trusted clients
+  // that request it via epds_skip_consent_on_signup in their metadata.
+  const signupAllowConsentSkip =
+    process.env.PDS_SIGNUP_ALLOW_CONSENT_SKIP === 'true' ||
+    process.env.PDS_SIGNUP_ALLOW_CONSENT_SKIP === '1'
 
   pds.app.get('/oauth/epds-callback', async (req, res) => {
     // We use `as any` casts for branded OAuth types (RequestUri, Code, etc.)
@@ -286,28 +293,121 @@ async function main() {
       }
 
       // Step 4: Bind account to device session (for future SSO).
-      // This creates a device-account association so that when the stock
-      // oauthMiddleware processes the /oauth/authorize redirect below,
-      // provider.authorize() will find this session and can auto-approve
-      // or show the upstream consent UI with actual scopes.
       await provider.accountManager.upsertDeviceAccount(deviceId, account.sub)
 
-      // Step 5: Redirect through the stock /oauth/authorize endpoint.
+      // Step 5: Determine whether to skip consent on sign-up.
+      // Consent is skipped only when ALL of these hold:
+      //   a) This is a brand-new account (not an existing user)
+      //   b) PDS_SIGNUP_ALLOW_CONSENT_SKIP is truthy
+      //   c) The client is trusted (listed in PDS_OAUTH_TRUSTED_CLIENTS)
+      //   d) The client's metadata has epds_skip_consent_on_signup: true
+      const isNewAccount = !existingAccount
+
+      if (isNewAccount && signupAllowConsentSkip) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider Client type not exported
+          const client = await (provider.clientManager as any).getClient(
+            clientId,
+          )
+          const clientMetadata = await resolveClientMetadata(clientId)
+
+          if (
+            client.info?.isTrusted &&
+            clientMetadata.epds_skip_consent_on_signup === true
+          ) {
+            // Bind device to the PAR request so setAuthorized() can proceed
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider requestManager not exported
+            const requestData = await (provider.requestManager as any).get(
+              requestUri,
+              deviceId,
+            )
+            const { parameters } = requestData
+
+            // Issue authorization code directly (bypasses /oauth/authorize)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @atproto/oauth-provider requestManager not exported
+            const code = await (provider.requestManager as any).setAuthorized(
+              requestUri,
+              client,
+              account,
+              deviceId,
+              deviceMetadata,
+            )
+
+            // Record the client as authorized so future logins can auto-approve
+            const scopeStr = parameters.scope as string | undefined
+            const scopes = scopeStr?.split(' ') ?? []
+            await provider.accountManager.setAuthorizedClient(account, client, {
+              authorizedScopes: scopes,
+            })
+
+            // Build redirect URL and send user directly to client
+            const redirectUri = parameters.redirect_uri as string | undefined
+            if (!redirectUri) {
+              res
+                .status(400)
+                .json({ error: 'No redirect_uri in authorization request' })
+              return
+            }
+
+            const redirectUrl = new URL(redirectUri)
+            const responseMode = (parameters.response_mode as string) || 'query'
+            const redirectParams: [string, string][] = [
+              ['iss', pdsUrl],
+              ['code', code],
+            ]
+            if (parameters.state) {
+              redirectParams.push(['state', parameters.state as string])
+            }
+
+            if (responseMode === 'fragment') {
+              const fragmentParams = new URLSearchParams()
+              for (const [k, v] of redirectParams) fragmentParams.set(k, v)
+              redirectUrl.hash = fragmentParams.toString()
+            } else {
+              for (const [k, v] of redirectParams) {
+                redirectUrl.searchParams.set(k, v)
+              }
+            }
+
+            res.setHeader('Cache-Control', 'no-store')
+            res.redirect(303, redirectUrl.toString())
+
+            logger.info(
+              { did, clientId },
+              'ePDS callback: consent skipped on sign-up (trusted client), redirecting to client',
+            )
+            return
+          }
+        } catch (err) {
+          // If consent-skip fails for any reason, fall through to normal flow
+          logger.warn(
+            { err, clientId },
+            'ePDS callback: consent-skip check failed, falling through to normal flow',
+          )
+        }
+      }
+
+      // Step 6: Redirect through the stock /oauth/authorize endpoint.
       // The oauthMiddleware will call provider.authorize() which:
       // - Finds the device session we just created via upsertDeviceAccount
       // - Checks checkConsentRequired() against actual OAuth scopes
       // - Auto-approves if no consent needed (SSO match, previously authorized scopes)
       // - Renders the upstream consent UI (consent-view.tsx) if consent is required
-      // This replaces the broken auth-service consent page that had hard-coded permissions.
       const authorizeUrl = new URL('/oauth/authorize', pdsUrl)
       authorizeUrl.searchParams.set('request_uri', requestUri)
       authorizeUrl.searchParams.set('client_id', clientId)
+
+      // For new accounts, set prompt=consent to skip account selection
+      // (the user just created this account — no point asking them to select it)
+      if (isNewAccount) {
+        authorizeUrl.searchParams.set('prompt', 'consent')
+      }
 
       res.setHeader('Cache-Control', 'no-store')
       res.redirect(303, authorizeUrl.toString())
 
       logger.info(
-        { did, clientId },
+        { did, clientId, isNewAccount },
         'ePDS callback: redirecting to stock /oauth/authorize for consent/approval',
       )
     } catch (err) {
