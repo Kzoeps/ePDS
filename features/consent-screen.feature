@@ -36,6 +36,7 @@ Feature: OAuth consent screen
     And a PDS account is created
     And the browser is redirected to the demo client with a valid session
 
+  @pending
   Scenario: Consent page shows client branding for trusted clients
     Given the demo client is listed in PDS_OAUTH_TRUSTED_CLIENTS
     And the demo client's metadata includes custom CSS

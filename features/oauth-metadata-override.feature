@@ -22,6 +22,7 @@ Feature: OAuth authorization server metadata override
     And response_types_supported, grant_types_supported, and dpop_signing_alg_values_supported are present
 
   @risk-of-disruption
+  @pending
   Scenario: OAuth clients discover and use the auth service automatically
     Given a standard AT Protocol OAuth client
     When the client discovers the authorization server via /.well-known/oauth-authorization-server

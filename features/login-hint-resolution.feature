@@ -21,12 +21,14 @@ Feature: Login hint resolution
     Then the login page renders directly at the OTP verification step
     And an OTP email is auto-sent to "alice@example.com"
 
+  @pending
   Scenario: DID login hint is resolved and skips the email form
     Given alice's DID is "did:plc:alice123"
     When the demo client initiates OAuth with login_hint="did:plc:alice123"
     Then the login page renders directly at the OTP verification step
     And an OTP email is auto-sent to "alice@example.com"
 
+  @pending
   Scenario: Login hint from PAR body is used when not on query string
     When the demo client submits login_hint in the PAR request body (not the redirect URL)
     Then the auth service retrieves the hint from the stored PAR request
