@@ -16,6 +16,7 @@ import type { EpdsWorld } from '../support/world.js'
 import { testEnv } from '../support/env.js'
 import { waitForEmail, extractOtp } from '../support/mailpit.js'
 import { createAccountViaOAuth } from './common.steps.js'
+import { sharedBrowser } from '../support/hooks.js'
 
 /**
  * Drive the account settings login flow:
@@ -67,7 +68,6 @@ Given(
     await createAccountViaOAuth(this, email)
 
     // Reset browser context so the scenario starts with a clean session
-    const { sharedBrowser } = await import('../support/hooks.js')
     await this.context.close()
     this.context = await sharedBrowser.newContext()
     this.page = await this.context.newPage()
@@ -86,26 +86,29 @@ Given(
  * testEnv.authUrl is used instead.
  */
 When(
-  'a user navigates to https://auth.pds.test/account without a session',
+  /^a user navigates to https:\/\/auth\.pds\.test\/account without a session$/,
   async function (this: EpdsWorld) {
     await this.page.goto(testEnv.authUrl + '/account')
   },
 )
 
 Then(
-  'the browser is redirected to /account/login',
+  /^the browser is redirected to \/account\/login$/,
   async function (this: EpdsWorld) {
     await this.page.waitForURL('**/account/login', { timeout: 10_000 })
     expect(this.page.url()).toMatch(/\/account\/login$/)
   },
 )
 
-When('the user navigates to /account/login', async function (this: EpdsWorld) {
-  await this.page.goto(testEnv.authUrl + '/account/login')
-})
+When(
+  /^the user navigates to \/account\/login$/,
+  async function (this: EpdsWorld) {
+    await this.page.goto(testEnv.authUrl + '/account/login')
+  },
+)
 
 Then(
-  'a login form is displayed (separate from the OAuth flow)',
+  /^a login form is displayed \(separate from the OAuth flow\)$/,
   async function (this: EpdsWorld) {
     await expect(this.page.locator('#email')).toBeVisible()
     const title = this.page.locator('h1')
@@ -129,10 +132,13 @@ When(
   },
 )
 
-Then('the browser is redirected to /account', async function (this: EpdsWorld) {
-  await this.page.waitForURL('**/account', { timeout: 10_000 })
-  expect(this.page.url()).toMatch(/\/account$/)
-})
+Then(
+  /^the browser is redirected to \/account$/,
+  async function (this: EpdsWorld) {
+    await this.page.waitForURL('**/account', { timeout: 10_000 })
+    expect(this.page.url()).toMatch(/\/account$/)
+  },
+)
 
 Then(
   'the account settings dashboard is displayed',
@@ -162,7 +168,7 @@ Given(
 )
 
 /** No-op — already on /account after loginToAccountSettings. */
-When('they view the /account page', async function (this: EpdsWorld) {
+When(/^they view the \/account page$/, async function (this: EpdsWorld) {
   // Already on /account from the login step — nothing to do
 })
 
@@ -171,7 +177,7 @@ Then('the page displays their DID', async function (this: EpdsWorld) {
 })
 
 Then(
-  'the page displays their primary email (masked)',
+  /^the page displays their primary email \(masked\)$/,
   async function (this: EpdsWorld) {
     // Masked email looks like "t***@example.com" — check for the masking pattern
     const bodyText = await this.page.locator('body').innerText()
@@ -242,8 +248,8 @@ Then(
  * Requires handle subdomain DNS resolution on Railway.
  */
 Then(
-  "https://{string}/.well-known/atproto-did returns alice's DID",
-  function (this: EpdsWorld, _handle: string) {
+  /^https:\/\/[^/]+\/\.well-known\/atproto-did returns alice's DID$/,
+  function (this: EpdsWorld) {
     return 'pending'
   },
 )
@@ -323,7 +329,7 @@ When(
 )
 
 Then(
-  'the browser is redirected away from /account (signed out)',
+  /^the browser is redirected away from \/account \(signed out\)$/,
   function (this: EpdsWorld) {
     const url = this.page.url()
     // Should be on /account/login or some other page, not /account dashboard

@@ -19,7 +19,7 @@ import { testEnv } from '../support/env.js'
 // ---------------------------------------------------------------------------
 
 When(
-  'GET /.well-known/oauth-authorization-server is fetched from the PDS',
+  /^GET \/\.well-known\/oauth-authorization-server is fetched from the PDS$/,
   async function (this: EpdsWorld) {
     const res = await fetch(
       `${testEnv.pdsUrl}/.well-known/oauth-authorization-server`,
@@ -55,7 +55,7 @@ Then(
 )
 
 Then(
-  'all other standard OAuth metadata fields are present (issuer, token_endpoint, etc.)',
+  /^all other standard OAuth metadata fields are present \(issuer, token_endpoint, etc\.\)$/,
   function (this: EpdsWorld) {
     if (!this.lastApiResponse) {
       throw new Error('No API response stored — fetch step must run first')
@@ -98,7 +98,7 @@ Then(
 // ---------------------------------------------------------------------------
 
 When(
-  'GET /.well-known/oauth-authorization-server is fetched',
+  /^GET \/\.well-known\/oauth-authorization-server is fetched$/,
   async function (this: EpdsWorld) {
     const res = await fetch(
       `${testEnv.pdsUrl}/.well-known/oauth-authorization-server`,
@@ -109,7 +109,7 @@ When(
 )
 
 Then(
-  "the response includes token_endpoint pointing to the PDS's /oauth/token",
+  /^the response includes token_endpoint pointing to the PDS's \/oauth\/token$/,
   function (this: EpdsWorld) {
     if (!this.lastApiResponse) {
       throw new Error('No API response stored — fetch step must run first')
@@ -125,7 +125,7 @@ Then(
 )
 
 Then(
-  'the response includes pushed_authorization_request_endpoint pointing to /oauth/par',
+  /^the response includes pushed_authorization_request_endpoint pointing to \/oauth\/par$/,
   function (this: EpdsWorld) {
     if (!this.lastApiResponse) {
       throw new Error('No API response stored — fetch step must run first')
@@ -172,7 +172,7 @@ Given('a standard AT Protocol OAuth client', function (this: EpdsWorld) {
 })
 
 When(
-  'the client discovers the authorization server via /.well-known/oauth-authorization-server',
+  /^the client discovers the authorization server via \/\.well-known\/oauth-authorization-server$/,
   function (this: EpdsWorld) {
     return 'pending'
   },
@@ -190,7 +190,7 @@ When(
 )
 
 Then(
-  'the user arrives at the ePDS auth service (not the stock PDS login)',
+  /^the user arrives at the ePDS auth service \(not the stock PDS login\)$/,
   function (this: EpdsWorld) {
     return 'pending'
   },
@@ -201,7 +201,7 @@ Then(
 // ---------------------------------------------------------------------------
 
 When(
-  'a client calls GET /xrpc/com.atproto.server.describeServer',
+  /^a client calls GET \/xrpc\/com\.atproto\.server\.describeServer$/,
   async function (this: EpdsWorld) {
     const res = await fetch(
       `${testEnv.pdsUrl}/xrpc/com.atproto.server.describeServer`,
