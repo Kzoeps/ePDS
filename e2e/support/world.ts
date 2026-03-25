@@ -25,6 +25,9 @@ export class EpdsWorld extends World {
   /** Body text of the most recent Mailpit email */
   lastEmailBody?: string
 
+  /** Last raw HTTP API response — set by api.steps.ts fetch steps. */
+  lastApiResponse?: { json: unknown; headers: Headers; status: number }
+
   get env() {
     return testEnv
   }

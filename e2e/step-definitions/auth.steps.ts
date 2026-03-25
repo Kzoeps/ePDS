@@ -2,9 +2,7 @@ import { Given, When, Then } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 import type { EpdsWorld } from '../support/world.js'
 import { testEnv } from '../support/env.js'
-import { waitForEmail, extractOtp, clearMailpit } from '../support/mailpit.js'
-import { sharedBrowser } from '../support/hooks.js'
-import { createAccountViaOAuth } from './common.steps.js'
+import { waitForEmail, extractOtp } from '../support/mailpit.js'
 When(
   'the demo client initiates an OAuth login',
   async function (this: EpdsWorld) {
