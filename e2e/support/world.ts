@@ -16,6 +16,15 @@ export class EpdsWorld extends World {
   /** Generated unique email for the current scenario — set by "unique test email" steps. */
   testEmail?: string
 
+  /** DID captured from the demo welcome page after successful login */
+  userDid?: string
+
+  /** Handle captured from the demo welcome page after successful login */
+  userHandle?: string
+
+  /** Body text of the most recent Mailpit email */
+  lastEmailBody?: string
+
   get env() {
     return testEnv
   }

@@ -68,6 +68,21 @@ export function extractOtp(subject: string): string {
 }
 
 /**
+ * Fetch the full message body from Mailpit by message ID.
+ * Prefers plain text body; falls back to HTML if text is absent.
+ */
+export async function getMessageBody(messageId: string): Promise<string> {
+  const headers = { Authorization: mailpitAuthHeader() }
+  const res = await fetch(`${testEnv.mailpitUrl}/api/v1/message/${messageId}`, {
+    headers,
+  })
+  if (!res.ok) throw new Error(`Mailpit GET message failed: ${res.status}`)
+  const data = (await res.json()) as { Text?: string; HTML?: string }
+  // Mailpit returns { Text: "...", HTML: "..." } — prefer Text, fall back to HTML
+  return data.Text ?? data.HTML ?? ''
+}
+
+/**
  * Delete all messages in Mailpit. Used to clear the inbox between
  * setup steps and the actual scenario to prevent cross-contamination.
  */
