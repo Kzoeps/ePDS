@@ -107,16 +107,18 @@ Then(
 // ---------------------------------------------------------------------------
 
 /**
- * No-op if world.userDid is already set (account was just created in the
- * previous scenario). Otherwise returns pending.
+ * Creates a fresh PDS account for Scenario 2. Each Cucumber scenario gets a
+ * new EpdsWorld instance, so world state from Scenario 1 is never available
+ * here. The step drives the full OAuth sign-up flow and stores the resulting
+ * DID and handle on the world. Returns pending when Mailpit is not configured.
  */
 Given(
   '{string} just had an account auto-created',
-  function (this: EpdsWorld, _email: string) {
-    if (!this.userDid) {
-      return 'pending'
-    }
-    // No-op — account was created in the previous scenario
+  async function (this: EpdsWorld, _email: string) {
+    if (!testEnv.mailpitPass) return 'pending'
+
+    const email = `auto-${Date.now()}@example.com`
+    await createAccountViaOAuth(this, email)
   },
 )
 
