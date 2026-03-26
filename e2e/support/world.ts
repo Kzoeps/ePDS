@@ -28,6 +28,9 @@ export class EpdsWorld extends World {
   /** Last raw HTTP API response — set by api.steps.ts fetch steps. */
   lastApiResponse?: { json: unknown; headers: Headers; status: number }
 
+  /** Session count before a revoke action — used by session revoke steps. */
+  lastSessionCount?: number
+
   get env() {
     return testEnv
   }
