@@ -604,7 +604,18 @@ Then(
 
 /**
  * Asserts that no consent screen was shown for a new user (account creation
- * implies consent). Same assertion as "no consent screen is shown".
+ * implies consent). Waits for the /welcome URL with a 30 s timeout.
+ *
+ * Used in Scenario 4 ("New user skips consent entirely") after the shared
+ * "authenticates via OTP through the demo client" step, which does not wait
+ * for any URL itself (it is also used by Scenario 1 where the flow stops at
+ * /auth/consent instead).
+ *
+ * If the flow unexpectedly shows a consent screen, this wait will time out.
+ * The timeout error ("waiting for url matching **\/welcome") can be confusing
+ * in that case — check whether the page is stuck at /auth/consent, which
+ * would indicate the server incorrectly treated the new user as an existing
+ * user (i.e. the `isNewAccount` flag was not set correctly in complete.ts).
  */
 Then(
   'no consent screen is shown (account creation implies consent)',
