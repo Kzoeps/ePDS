@@ -6,7 +6,6 @@ Feature: Standard PDS behaviors at risk of disruption
 
   Background:
     Given the ePDS test environment is running
-    And a user account has been auto-created via the ePDS OAuth flow
 
   @risk-of-disruption
   Scenario: describeServer returns valid PDS metadata
@@ -15,6 +14,7 @@ Feature: Standard PDS behaviors at risk of disruption
 
   @risk-of-disruption
   Scenario: Full OAuth flow produces a working access token
+    Given a user account has been auto-created via the ePDS OAuth flow
     When a user authenticates through the ePDS OAuth flow
     And the demo client exchanges the authorization code for tokens
     Then the access token can be used to call authenticated XRPC endpoints
@@ -37,7 +37,8 @@ Feature: Standard PDS behaviors at risk of disruption
 
   @risk-of-disruption
   Scenario: DID document resolves correctly for ePDS accounts
-    Given the user's account was auto-created with a PLC DID
+    Given a user account has been auto-created via the ePDS OAuth flow
+    And the user's account was auto-created with a PLC DID
     When the DID document is resolved
     Then it contains a service entry pointing to the PDS
     And the handle can be verified

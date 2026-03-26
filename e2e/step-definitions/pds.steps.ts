@@ -282,7 +282,9 @@ When(
   async function (this: EpdsWorld) {
     if (!testEnv.mailpitPass) return 'pending'
     if (!this.testEmail) {
-      throw new Error('No test email set — Background step must run first')
+      throw new Error(
+        'No test email set — "a user account has been auto-created via the ePDS OAuth flow" step must run first',
+      )
     }
 
     await this.page.goto(testEnv.demoUrl)
