@@ -5,6 +5,7 @@ import {
   hashToken,
   generateVerificationToken,
   escapeHtml,
+  maskEmail,
   validateLocalPart,
 } from '@certified-app/shared'
 import { fromNodeHeaders } from 'better-auth/node'
@@ -79,7 +80,7 @@ export function createAccountSettingsRouter(
     res.type('html').send(
       renderSettingsPage({
         did: did ?? '(unknown)',
-        email,
+        email: maskEmail(email),
         handleDomain,
         backupEmails,
         sessions,
