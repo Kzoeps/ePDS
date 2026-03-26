@@ -2,7 +2,9 @@ import { Given, When, Then } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 import type { EpdsWorld } from '../support/world.js'
 import { testEnv } from '../support/env.js'
-import { waitForEmail, extractOtp } from '../support/mailpit.js'
+import { waitForEmail, extractOtp, clearMailpit } from '../support/mailpit.js'
+import { createAccountViaOAuth } from './common.steps.js'
+import { sharedBrowser } from '../support/hooks.js'
 When(
   'the demo client initiates an OAuth login',
   async function (this: EpdsWorld) {
@@ -463,7 +465,9 @@ Then(
     // Wait for the demo to redirect with the error — it converts
     // access_denied → auth_failed in the callback URL
     await this.page.waitForURL(/error=auth_failed/, { timeout: 30_000 })
-    await expect(this.page.locator('body')).toContainText('Authentication failed')
+    await expect(this.page.locator('body')).toContainText(
+      'Authentication failed',
+    )
   },
 )
 
