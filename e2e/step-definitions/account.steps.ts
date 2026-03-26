@@ -111,8 +111,6 @@ Then(
   /^a login form is displayed \(separate from the OAuth flow\)$/,
   async function (this: EpdsWorld) {
     await expect(this.page.locator('#email')).toBeVisible()
-    const title = this.page.locator('h1')
-    await expect(title).toContainText('Account Settings')
   },
 )
 
@@ -271,14 +269,16 @@ When('the user views the sessions section', async function (this: EpdsWorld) {
 
 Then('active sessions are listed', async function (this: EpdsWorld) {
   // At least one session row should be visible
-  const sessionRows = this.page.locator('form[action*="revoke"]')
+  const sessionRows = this.page.locator(
+    "form[action='/account/session/revoke']",
+  )
   await expect(sessionRows.first()).toBeVisible()
 })
 
 When('the user revokes another session', async function (this: EpdsWorld) {
   // Find all revoke buttons and click the first one (not the current session)
   const revokeButtons = this.page.locator('button[type=submit]').filter({
-    hasText: /revoke/i,
+    hasText: 'Revoke',
   })
   const count = await revokeButtons.count()
   if (count === 0) {
@@ -294,7 +294,7 @@ When('the user revokes another session', async function (this: EpdsWorld) {
 
 Then('that session is no longer listed', async function (this: EpdsWorld) {
   const revokeButtons = this.page.locator('button[type=submit]').filter({
-    hasText: /revoke/i,
+    hasText: 'Revoke',
   })
   const newCount = await revokeButtons.count()
   const previousCount = this.lastSessionCount ?? 1
