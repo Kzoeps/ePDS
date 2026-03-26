@@ -4,6 +4,13 @@ on:
     states: [success]
 
 jobs:
+  debug-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump deployment event context
+        run: |
+          echo '${{ toJSON(github.event) }}'
+
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
