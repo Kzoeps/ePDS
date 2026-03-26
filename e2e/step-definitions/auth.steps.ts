@@ -123,6 +123,10 @@ Then(
 When(
   'the user requests an OTP for {string}',
   async function (this: EpdsWorld, email: string) {
+    // Guard: this step triggers a real OTP send. Skip when Mailpit is not
+    // configured so we never fire emails to real addresses in CI environments
+    // that lack a mail trap, even if the Background step did not gate us.
+    if (!testEnv.mailpitPass) return 'pending'
     await this.page.goto(testEnv.demoUrl)
     await this.page.fill('#email', email)
     await this.page.click('button[type=submit]')
@@ -136,6 +140,10 @@ When(
 When(
   'the user requests an OTP for a unique test email',
   async function (this: EpdsWorld) {
+    // Guard: this step triggers a real OTP send. Skip when Mailpit is not
+    // configured so we never fire emails to real addresses in CI environments
+    // that lack a mail trap, even if the scenario has no Mailpit-gating Background.
+    if (!testEnv.mailpitPass) return 'pending'
     this.testEmail = `test-${Date.now()}@example.com`
     await this.page.goto(testEnv.demoUrl)
     await this.page.fill('#email', this.testEmail)
@@ -352,10 +360,23 @@ Given(
 )
 
 /**
- * Drives the full OTP login flow through the demo client for an existing user.
- * Uses world.testEmail (set by the Background step) — ignores the literal
- * Gherkin email. Does NOT wait for /welcome because the flow may stop at
- * /auth/consent for existing users.
+ * Drives the full OTP login flow through the demo client.
+ * Uses world.testEmail (set by the preceding Given step) — ignores the literal
+ * Gherkin email.
+ *
+ * This step is shared between two scenarios with different post-OTP expectations:
+ *   - Scenario 1 (existing user, first login to demo client): flow stops at /auth/consent
+ *   - Scenario 4 (new user, no PDS account yet): flow goes directly to /welcome
+ *
+ * Because of this dual use, this step intentionally does NOT wait for any
+ * specific URL after clicking the OTP verify button. The subsequent Then step
+ * is responsible for asserting the correct destination:
+ *   - "a consent screen is displayed" waits for /auth/consent (Scenario 1)
+ *   - "no consent screen is shown (account creation implies consent)" waits for /welcome (Scenario 4)
+ *
+ * world.testEmail is set by:
+ *   - "{string} has an existing PDS account" (Scenario 1) — creates an account first
+ *   - "no PDS account exists for {string}" (Scenario 4) — generates a unique email only
  */
 When(
   '{string} authenticates via OTP through the demo client',
@@ -363,7 +384,8 @@ When(
     if (!testEnv.mailpitPass) return 'pending'
     if (!this.testEmail) {
       throw new Error(
-        'No test email set — background account creation step must run first',
+        'No test email set — a preceding Given step must set world.testEmail ' +
+          '(e.g. "{string} has an existing PDS account" or "no PDS account exists for {string}")',
       )
     }
 
@@ -378,7 +400,8 @@ When(
     const otp = extractOtp(message.Subject)
     await this.page.fill('#code', otp)
     await this.page.click('#form-verify-otp .btn-primary')
-    // Do NOT wait for /welcome — the flow may stop at /auth/consent
+    // Do NOT wait for a specific URL here — the subsequent Then step asserts
+    // the correct destination (/auth/consent for existing users, /welcome for new users).
   },
 )
 
