@@ -1,0 +1,13 @@
+name: Dummy
+
+on:
+  push:
+    branches:
+      - e2e-tests
+
+jobs:
+  dummy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hello
+        run: echo "workflow is running"
