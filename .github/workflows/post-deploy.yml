@@ -1,4 +1,4 @@
-name: Post-Deployment Actions
+name: Debug Post-Deployment Actions
 
 on:
   deployment_status:
