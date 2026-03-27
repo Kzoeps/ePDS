@@ -1,7 +1,6 @@
 name: E2E tests
 on:
   deployment_status:
-    states: [success]
 
 jobs:
   e2e:
@@ -72,12 +71,12 @@ jobs:
           E2E_MAILPIT_USER: ${{ secrets.E2E_MAILPIT_USER }}
           E2E_MAILPIT_PASS: ${{ secrets.E2E_MAILPIT_PASS }}
           E2E_HEADLESS: 'true'
-        run: pnpm test:e2e:ci
+        run: pnpm test:e2e:headless
 
-      - name: Upload Playwright report
+      - name: Upload e2e report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
         with:
-          name: playwright-report
-          path: playwright-report/
+          name: e2e-report
+          path: reports/
           retention-days: 2
