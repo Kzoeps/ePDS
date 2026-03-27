@@ -60,7 +60,7 @@ For OTP scenarios you also need a local Mailpit instance (see
 | `E2E_AUTH_URL`     | Yes      | —         | Auth service base URL                                                |
 | `E2E_DEMO_URL`     | Yes      | —         | Demo frontend base URL                                               |
 | `E2E_MAILPIT_URL`  | No       | —         | Mailpit base URL. Required for OTP scenarios.                        |
-| `E2E_MAILPIT_USER` | No       | `admin`   | Mailpit HTTP basic auth username                                     |
+| `E2E_MAILPIT_USER` | No       | `karma`   | Mailpit HTTP basic auth username                                     |
 | `E2E_MAILPIT_PASS` | No       | _(empty)_ | Mailpit HTTP basic auth password. Leave empty to skip OTP scenarios. |
 | `E2E_HEADLESS`     | No       | `false`   | Set to `true` to run without a visible browser window                |
 
