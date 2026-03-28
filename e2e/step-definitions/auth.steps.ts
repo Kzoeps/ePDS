@@ -43,14 +43,12 @@ When(
   },
 )
 
-When(
-  'the user enters {string} on the login page',
-  async function (this: EpdsWorld, email: string) {
-    await this.page.fill('#email', email)
-    await this.page.click('button[type=submit]')
-    await this.page.waitForLoadState('networkidle')
-  },
-)
+When('the user approves the consent screen', async function (this: EpdsWorld) {
+  await expect(this.page.locator('.btn-approve')).toBeVisible({
+    timeout: 30_000,
+  })
+  await this.page.click('.btn-approve')
+})
 
 When(
   'the user enters the test email on the login page',
@@ -204,23 +202,3 @@ Then('the login page renders normally', async function (this: EpdsWorld) {
 Then('the OTP flow still works to completion', function (this: EpdsWorld) {
   return this.skipIfNoMailpit()
 })
-
-// --- OTP configuration scenario ---
-
-Given(
-  'OTP_FORMAT is set to {string} and OTP_LENGTH is set to {string}',
-  function (this: EpdsWorld, _format: string, _length: string) {
-    return this.skipIfNoMailpit()
-  },
-)
-
-When('the user requests an OTP', function (this: EpdsWorld) {
-  return this.skipIfNoMailpit()
-})
-
-Then(
-  'the OTP input field has inputmode={string} \\(not {string}\\)',
-  function (this: EpdsWorld, _expected: string, _notExpected: string) {
-    return this.skipIfNoMailpit()
-  },
-)

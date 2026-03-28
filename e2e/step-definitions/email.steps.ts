@@ -71,17 +71,3 @@ Then(
     }
   },
 )
-
-Then(
-  'the OTP code in the mail trap is {int} characters of uppercase letters and digits',
-  function (this: EpdsWorld, length: number) {
-    if (!testEnv.mailpitPass) return 'pending'
-    if (!this.otpCode) return 'pending' // preceding email step went pending
-    const pattern = new RegExp(`^[A-Z0-9]{${length}}$`)
-    if (!pattern.test(this.otpCode)) {
-      throw new Error(
-        `Expected OTP to be ${length} uppercase alphanumeric characters but got: "${this.otpCode}"`,
-      )
-    }
-  },
-)

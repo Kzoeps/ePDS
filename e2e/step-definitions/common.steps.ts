@@ -70,6 +70,10 @@ export async function createAccountViaOAuth(
  * the browser context so the returning-user login starts with a clean
  * session (no cookies from the sign-up). The generated email is stored on
  * world.testEmail for use by subsequent steps.
+ *
+ * Note: the first login to the demo client always shows the consent screen
+ * for a returning user (account exists but no client_logins record yet).
+ * The scenario is expected to handle that with "the user approves the consent screen".
  */
 Given('a returning user has a PDS account', async function (this: EpdsWorld) {
   if (!testEnv.mailpitPass) return 'pending'
@@ -86,3 +90,59 @@ Given('a returning user has a PDS account', async function (this: EpdsWorld) {
   this.page.setDefaultNavigationTimeout(30_000)
   this.page.setDefaultTimeout(15_000)
 })
+
+/**
+ * Creates a PDS account AND completes a first login (including approving the
+ * consent screen), so that the demo client is already recorded in client_logins.
+ * Resets the browser context afterwards so the actual test login starts fresh.
+ *
+ * After this step, the next login for world.testEmail will skip consent entirely
+ * and land directly on /welcome.
+ */
+Given(
+  'a returning user has already approved the demo client',
+  async function (this: EpdsWorld) {
+    if (!testEnv.mailpitPass) return 'pending'
+
+    const email = `approved-${Date.now()}@example.com`
+
+    // Step 1: Create the account via the new-user sign-up flow
+    await createAccountViaOAuth(this, email)
+
+    // Reset context between sign-up and first returning login
+    await this.context.close()
+    this.context = await sharedBrowser.newContext()
+    this.page = await this.context.newPage()
+    this.page.setDefaultNavigationTimeout(30_000)
+    this.page.setDefaultTimeout(15_000)
+
+    // Step 2: First returning-user login — consent screen will appear, approve it
+    await this.page.goto(testEnv.demoUrl)
+    await this.page.fill('#email', email)
+    await this.page.click('button[type=submit]')
+    await expect(this.page.locator('#step-otp.active')).toBeVisible({
+      timeout: 30_000,
+    })
+
+    const message = await waitForEmail(`to:${email}`)
+    const otp = await extractOtp(message.ID)
+    await this.page.fill('#code', otp)
+    await this.page.click('#form-verify-otp .btn-primary')
+
+    // Approve consent — this records the client_logins entry
+    await expect(this.page.locator('.btn-approve')).toBeVisible({
+      timeout: 30_000,
+    })
+    await this.page.click('.btn-approve')
+    await this.page.waitForURL('**/welcome', { timeout: 30_000 })
+
+    await clearMailpit()
+
+    // Reset context again so the actual test scenario starts with a clean session
+    await this.context.close()
+    this.context = await sharedBrowser.newContext()
+    this.page = await this.context.newPage()
+    this.page.setDefaultNavigationTimeout(30_000)
+    this.page.setDefaultTimeout(15_000)
+  },
+)

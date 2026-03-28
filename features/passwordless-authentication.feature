@@ -29,10 +29,26 @@ Feature: Passwordless authentication via email OTP
     Then an OTP email arrives in the mail trap
     And the email subject contains "Sign-in" (returning user)
     When the user enters the OTP code
+    And the user approves the consent screen
+    Then the browser is redirected back to the demo client with a valid session
+
+  Scenario: Returning user who has already approved skips consent
+    Given a returning user has already approved the demo client
+    When the demo client initiates an OAuth login
+    And the user enters the test email on the login page
+    Then an OTP email arrives in the mail trap
+    And the email subject contains "Sign-in" (returning user)
+    When the user enters the OTP code
     Then the browser is redirected back to the demo client with a valid session
 
   # --- OTP configuration ---
 
+  # @manual: This scenario requires the auth service to be running with
+  # OTP_CHARSET=alphanumeric and OTP_LENGTH=8. These are Railway environment
+  # variables that cannot be dynamically set from the test runner against a
+  # remote deployment. To test manually: set OTP_CHARSET=alphanumeric and
+  # OTP_LENGTH=8 before starting the auth service, then run the e2e suite locally.
+  @manual
   Scenario: Alphanumeric OTP codes when configured
     Given OTP_FORMAT is set to "alphanumeric" and OTP_LENGTH is set to "8"
     When the user requests an OTP
