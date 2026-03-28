@@ -33,13 +33,27 @@ export async function waitForEmail(
   const headers = { Authorization: mailpitAuthHeader() }
 
   for (let i = 0; i < attempts; i++) {
-    const res = await fetch(
-      `${testEnv.mailpitUrl}/api/v1/search?query=${encodeURIComponent(query)}&limit=1`,
-      { headers },
-    )
-    const data = (await res.json()) as MailpitSearchResponse
-    if (data.messages?.length) {
-      return data.messages[0]
+    try {
+      const res = await fetch(
+        `${testEnv.mailpitUrl}/api/v1/search?query=${encodeURIComponent(query)}&limit=1`,
+        { headers },
+      )
+      if (!res.ok) {
+        if (res.status >= 400 && res.status < 500) {
+          throw new Error(
+            `Mailpit search failed with client error: ${res.status}`,
+          )
+        }
+        await new Promise<void>((r) => setTimeout(r, interval))
+        continue
+      }
+      const data = (await res.json()) as MailpitSearchResponse
+      if (data.messages?.length) {
+        return data.messages[0]
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('client error'))
+        throw err
     }
     await new Promise<void>((r) => setTimeout(r, interval))
   }
@@ -77,15 +91,16 @@ export async function extractOtp(messageId: string): Promise<string> {
 }
 
 /**
- * Delete all messages in Mailpit. Used to clear the inbox between
- * setup steps and the actual scenario to prevent cross-contamination.
+ * Delete all Mailpit messages addressed to a specific recipient.
+ * Uses the search-based delete endpoint to avoid wiping the entire inbox,
+ * which would cause race conditions when scenarios run in parallel workers.
  */
-export async function clearMailpit(): Promise<void> {
-  const res = await fetch(`${testEnv.mailpitUrl}/api/v1/messages`, {
-    method: 'DELETE',
-    headers: { Authorization: mailpitAuthHeader() },
-  })
+export async function clearMailpit(recipient: string): Promise<void> {
+  const res = await fetch(
+    `${testEnv.mailpitUrl}/api/v1/search?query=${encodeURIComponent(`to:${recipient}`)}`,
+    { method: 'DELETE', headers: { Authorization: mailpitAuthHeader() } },
+  )
   if (!res.ok) {
-    throw new Error(`Mailpit DELETE /api/v1/messages failed: ${res.status}`)
+    throw new Error(`Mailpit DELETE /api/v1/search failed: ${res.status}`)
   }
 }

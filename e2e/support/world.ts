@@ -3,9 +3,9 @@ import type { Browser, BrowserContext, Page } from '@playwright/test'
 import { testEnv } from './env.js'
 
 export class EpdsWorld extends World {
-  declare browser: Browser
-  declare context: BrowserContext
-  declare page: Page
+  browser?: Browser
+  context?: BrowserContext
+  page?: Page
 
   /** OTP code extracted from the most recent email — set by email steps, read by auth steps. */
   otpCode?: string

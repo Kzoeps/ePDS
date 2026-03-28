@@ -10,13 +10,12 @@ import { chromium, type Browser } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import type { EpdsWorld } from './world.js'
 import { testEnv } from './env.js'
-import { clearMailpit } from './mailpit.js'
 
 // Railway services have cold-start latency. Default cucumber step timeout
 // is 5 seconds which is too short for OAuth redirect chains.
 setDefaultTimeout(60_000)
 
-export let sharedBrowser: Browser
+export let sharedBrowser: Browser | undefined
 
 BeforeAll(async function () {
   await mkdir('reports/screenshots', { recursive: true })
@@ -25,22 +24,17 @@ BeforeAll(async function () {
 
 Before(async function (this: EpdsWorld) {
   this.browser = sharedBrowser
-  this.context = await sharedBrowser.newContext()
+  this.context = await sharedBrowser!.newContext()
   this.page = await this.context.newPage()
   this.page.setDefaultNavigationTimeout(30_000)
   this.page.setDefaultTimeout(15_000)
 })
 
-Before(async function () {
-  if (!testEnv.mailpitPass) return
-  await clearMailpit()
-})
-
 After(async function (this: EpdsWorld, scenario) {
-  if (scenario.result?.status === Status.FAILED) {
+  if (scenario.result?.status === Status.FAILED && this.page) {
     const safeName = scenario.pickle.name
-      .replace(/[^a-z0-9]+/gi, '-')
-      .replace(/^-|-$/g, '')
+      .replaceAll(/[^a-z0-9]+/gi, '-')
+      .replaceAll(/^-|-$/g, '')
       .toLowerCase()
       .slice(0, 100)
     await this.page.screenshot({
@@ -48,9 +42,9 @@ After(async function (this: EpdsWorld, scenario) {
       fullPage: true,
     })
   }
-  await this.context.close()
+  if (this.context) await this.context.close()
 })
 
 AfterAll(async function () {
-  await sharedBrowser.close()
+  await sharedBrowser?.close()
 })

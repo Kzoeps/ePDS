@@ -58,7 +58,7 @@ jobs:
             echo "::error::$URL timed out after 5 minutes"
             exit 1
           }
-          check "${{ steps.urls.outputs.epds_url }}/xrpc/_health"
+          check "${{ steps.urls.outputs.epds_url }}/health"
           check "${{ steps.urls.outputs.auth_url }}/health"
           check "${{ steps.urls.outputs.demo_url }}"
           check "${{ steps.urls.outputs.mailpit_url }}/readyz"

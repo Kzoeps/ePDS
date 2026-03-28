@@ -9,13 +9,22 @@ Given('the ePDS test environment is running', async function (this: EpdsWorld) {
   const res = await fetch(`${testEnv.pdsUrl}/health`)
   if (!res.ok) {
     throw new Error(
-      `PDS health check failed: ${res.status} at ${testEnv.pdsUrl}/xrpc/_health`,
+      `PDS health check failed: ${res.status} at ${testEnv.pdsUrl}/health`,
     )
   }
 })
 
 Given('a demo OAuth client is registered', async function (this: EpdsWorld) {
-  // No-op: Railway demo app is always registered via /client-metadata.json
+  const res = await fetch(`${testEnv.demoUrl}/client-metadata.json`)
+  if (!res.ok) {
+    throw new Error(
+      `Demo client metadata not found: ${res.status} at ${testEnv.demoUrl}/client-metadata.json`,
+    )
+  }
+  const body = (await res.json()) as Record<string, unknown>
+  if (!body.client_id) {
+    throw new Error('client-metadata.json is missing client_id')
+  }
 })
 
 /**
@@ -36,20 +45,23 @@ export async function createAccountViaOAuth(
   world: EpdsWorld,
   email: string,
 ): Promise<{ did: string }> {
-  await world.page.goto(testEnv.demoUrl)
-  await world.page.fill('#email', email)
-  await world.page.click('button[type=submit]')
-  await expect(world.page.locator('#step-otp.active')).toBeVisible({
+  const page = world.page
+  if (!page) throw new Error('page is not initialised')
+
+  await page.goto(testEnv.demoUrl)
+  await page.fill('#email', email)
+  await page.click('button[type=submit]')
+  await expect(page.locator('#step-otp.active')).toBeVisible({
     timeout: 30_000,
   })
 
   const message = await waitForEmail(`to:${email}`)
   const otp = await extractOtp(message.ID)
-  await world.page.fill('#code', otp)
-  await world.page.click('#form-verify-otp .btn-primary')
-  await world.page.waitForURL('**/welcome', { timeout: 30_000 })
+  await page.fill('#code', otp)
+  await page.click('#form-verify-otp .btn-primary')
+  await page.waitForURL('**/welcome', { timeout: 30_000 })
 
-  const bodyText = await world.page.locator('body').innerText()
+  const bodyText = await page.locator('body').innerText()
   const didMatch = /did:[a-z0-9:]+/i.exec(bodyText)
   if (!didMatch) {
     throw new Error('Could not find DID on welcome page')
@@ -58,7 +70,7 @@ export async function createAccountViaOAuth(
   world.testEmail = email
   world.userDid = didMatch[0]
 
-  await clearMailpit()
+  await clearMailpit(email)
 
   return { did: didMatch[0] }
 }
@@ -84,7 +96,8 @@ Given('a returning user has a PDS account', async function (this: EpdsWorld) {
 
   // Reset browser context to eliminate session cookies from the sign-up
   // flow — the returning-user login must start as a fresh OAuth session
-  await this.context.close()
+  await this.context?.close()
+  if (!sharedBrowser) throw new Error('sharedBrowser is not initialised')
   this.context = await sharedBrowser.newContext()
   this.page = await this.context.newPage()
   this.page.setDefaultNavigationTimeout(30_000)
@@ -110,33 +123,35 @@ Given(
     await createAccountViaOAuth(this, email)
 
     // Reset context between sign-up and first returning login
-    await this.context.close()
+    await this.context?.close()
+    if (!sharedBrowser) throw new Error('sharedBrowser is not initialised')
     this.context = await sharedBrowser.newContext()
     this.page = await this.context.newPage()
     this.page.setDefaultNavigationTimeout(30_000)
     this.page.setDefaultTimeout(15_000)
 
     // Step 2: First returning-user login — consent screen will appear, approve it
-    await this.page.goto(testEnv.demoUrl)
-    await this.page.fill('#email', email)
-    await this.page.click('button[type=submit]')
-    await expect(this.page.locator('#step-otp.active')).toBeVisible({
+    const page = this.page
+    await page.goto(testEnv.demoUrl)
+    await page.fill('#email', email)
+    await page.click('button[type=submit]')
+    await expect(page.locator('#step-otp.active')).toBeVisible({
       timeout: 30_000,
     })
 
     const message = await waitForEmail(`to:${email}`)
     const otp = await extractOtp(message.ID)
-    await this.page.fill('#code', otp)
-    await this.page.click('#form-verify-otp .btn-primary')
+    await page.fill('#code', otp)
+    await page.click('#form-verify-otp .btn-primary')
 
     // Approve consent — this records the client_logins entry
-    await expect(this.page.locator('.btn-approve')).toBeVisible({
+    await expect(page.locator('.btn-approve')).toBeVisible({
       timeout: 30_000,
     })
-    await this.page.click('.btn-approve')
-    await this.page.waitForURL('**/welcome', { timeout: 30_000 })
+    await page.click('.btn-approve')
+    await page.waitForURL('**/welcome', { timeout: 30_000 })
 
-    await clearMailpit()
+    await clearMailpit(email)
 
     // Reset context again so the actual test scenario starts with a clean session
     await this.context.close()
