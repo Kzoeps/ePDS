@@ -20,12 +20,20 @@ Feature: Passwordless authentication via email OTP
     # "Welcome" for new users, "Sign-in" for returning users
     And the email subject contains "Welcome"
     And the login page shows an OTP verification form
-    When the user enters the OTP code
-    And the user picks a handle
+    And the OTP form shows a Terms of Service checkbox
+    When the user accepts the Terms of Service
+    And the user enters the OTP code from the email
     Then the browser is redirected back to the demo client
     And the demo client has a valid OAuth access token
 
-  @email
+  Scenario: New user cannot complete OTP sign-in without accepting Terms of Service
+    When the user requests an OTP for "newuser@example.com"
+    Then the login page shows an OTP verification form
+    And the OTP form shows a Terms of Service checkbox
+    When the user submits the OTP code without accepting the Terms of Service
+    Then the verification form shows an error message
+    And the sign-in is not completed
+
   Scenario: Returning user authenticates with email OTP
     Given a returning user has a PDS account
     When the demo client initiates an OAuth login
@@ -41,7 +49,8 @@ Feature: Passwordless authentication via email OTP
     When the demo client initiates an OAuth login
     And the user enters the test email on the login page
     Then an OTP email arrives in the mail trap
-    And the email subject contains "Sign-in"
+    And the email subject contains "Sign-in" (returning user)
+    And the OTP form does not show a Terms of Service checkbox
     When the user enters the OTP code
     Then the browser is redirected back to the demo client with a valid session
 

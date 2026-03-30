@@ -58,6 +58,18 @@ Feature: Security measures
     When GET /metrics is called with valid Basic auth credentials
     Then the response includes uptime and memory usage metrics
 
+  # --- Terms of Service enforcement ---
+
+  Scenario: Server rejects OTP sign-in for new user without ToS acceptance
+    When a new user submits a valid OTP code without the tosAccepted flag
+    Then the auth service returns a 400 Bad Request
+    And the error message is "You must accept the Terms of Service to create an account."
+
+  Scenario: Returning user can sign in without sending tosAccepted
+    Given "bob@example.com" already has a PDS account
+    When "bob@example.com" submits a valid OTP code without the tosAccepted flag
+    Then the sign-in succeeds
+
   # --- Email privacy ---
 
   Scenario: Displayed emails are masked on error/status pages
