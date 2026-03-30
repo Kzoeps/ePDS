@@ -35,8 +35,8 @@ Given('a demo OAuth client is registered', async function (this: EpdsWorld) {
  *   4. Fetch OTP from Mailpit via waitForEmail + extractOtp
  *   5. Fill #code with OTP, click #form-verify-otp .btn-primary
  *   6. Wait for URL matching "**\/welcome" (30 s)
- *   7. Capture DID from page body text
- *   8. Store testEmail and userDid on the world
+ *   7. Capture DID and handle from page body text
+ *   8. Store testEmail, userDid, and userHandle on the world
  *   9. Clear Mailpit inbox
  *
  * Callers must check testEnv.mailpitPass before calling this function.
@@ -44,7 +44,7 @@ Given('a demo OAuth client is registered', async function (this: EpdsWorld) {
 export async function createAccountViaOAuth(
   world: EpdsWorld,
   email: string,
-): Promise<{ did: string }> {
+): Promise<{ did: string; handle: string | undefined }> {
   const page = world.page
   if (!page) throw new Error('page is not initialised')
 
@@ -67,12 +67,17 @@ export async function createAccountViaOAuth(
     throw new Error('Could not find DID on welcome page')
   }
 
+  // Handle is rendered as "@<handle>" on the welcome page
+  const handleMatch = /@([\w.-]+)/.exec(bodyText)
+  const handle = handleMatch ? handleMatch[1] : undefined
+
   world.testEmail = email
   world.userDid = didMatch[0]
+  world.userHandle = handle
 
   await clearMailpit(email)
 
-  return { did: didMatch[0] }
+  return { did: didMatch[0], handle }
 }
 
 /**

@@ -53,10 +53,10 @@ When(
 
 When('the user approves the consent screen', async function (this: EpdsWorld) {
   const page = getPage(this)
-  await expect(page.locator('.btn-approve')).toBeVisible({
+  await expect(page.getByRole('button', { name: 'Approve' })).toBeVisible({
     timeout: 30_000,
   })
-  await page.click('.btn-approve')
+  await page.getByRole('button', { name: 'Approve' }).click()
 })
 
 When(
