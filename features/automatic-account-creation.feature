@@ -36,4 +36,4 @@ Feature: Automatic account creation on first login
     Given a new user has registered via the demo client
     When someone attempts createSession with any password
     Then the createSession request fails with an auth error
-    And the only way to authenticate is through the ePDS OAuth flow
+    # Password-based login is the only alternative — rejected above

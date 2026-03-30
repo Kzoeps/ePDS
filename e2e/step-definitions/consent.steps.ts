@@ -6,15 +6,13 @@
  * (renderConsent() needs to accept and apply clientBrandingCss from client metadata).
  */
 
-import { Then, When } from '@cucumber/cucumber'
+import { Then } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 import type { EpdsWorld } from '../support/world.js'
+import { getPage } from '../support/utils.js'
 
-function getPage(world: EpdsWorld) {
-  const page = world.page
-  if (!page) throw new Error('page is not initialised')
-  return page
-}
+// Note: When('the user clicks {string}') lives in common.steps.ts — it is a
+// generic UI interaction step used here for "Approve" and "Deny" buttons.
 
 Then('a consent screen is displayed', async function (this: EpdsWorld) {
   const page = getPage(this)
@@ -34,14 +32,6 @@ Then("it shows the demo client's name", async function (this: EpdsWorld) {
     throw new Error('Consent screen subtitle is empty — expected client name')
   }
 })
-
-When(
-  'the user clicks {string}',
-  async function (this: EpdsWorld, label: string) {
-    const page = getPage(this)
-    await page.getByRole('button', { name: label }).click()
-  },
-)
 
 Then(
   'the browser is redirected to the PDS with an access_denied error',

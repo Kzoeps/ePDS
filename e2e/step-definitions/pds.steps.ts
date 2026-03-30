@@ -13,13 +13,8 @@ import { Given, When, Then } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 import type { EpdsWorld } from '../support/world.js'
 import { testEnv } from '../support/env.js'
-import { createAccountViaOAuth } from './common.steps.js'
-
-function getPage(world: EpdsWorld) {
-  const page = world.page
-  if (!page) throw new Error('page is not initialised')
-  return page
-}
+import { getPage } from '../support/utils.js'
+import { createAccountViaOAuth } from '../support/flows.js'
 
 /**
  * Shared Given used by all automatic-account-creation scenarios.
@@ -128,7 +123,6 @@ When(
         }),
       },
     )
-    // Store status for the assertion step
     this.lastHttpStatus = res.status
   },
 )
@@ -148,10 +142,9 @@ Then(
   },
 )
 
+// Descriptive step — the assertion is covered by the preceding createSession step.
+// Password-based login is the only alternative and it is rejected above.
 Then(
   'the only way to authenticate is through the ePDS OAuth flow',
-  function (this: EpdsWorld) {
-    // Descriptive step — the assertion is covered by the preceding step.
-    // This step documents intent only.
-  },
+  function (this: EpdsWorld) {},
 )
