@@ -1,0 +1,83 @@
+name: E2E tests
+on:
+  deployment_status:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      pull-requests: read
+    if: |
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment.transient_environment == true &&
+      github.event.deployment.creator.login == 'railway-app[bot]'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: npx playwright install --with-deps chromium
+
+      - name: Extract PR number
+        id: meta
+        run: |
+          ENV="${{ github.event.deployment.environment }}"
+          PR_NUMBER=$(echo "$ENV" | grep -oP '(?<=pr-)\d+' || true)
+          if [ -z "$PR_NUMBER" ]; then
+            echo "::error::Could not parse PR number from environment: $ENV"
+            exit 1
+          fi
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+
+      - name: Derive service URLs
+        id: urls
+        env:
+          PR: ${{ steps.meta.outputs.pr_number }}
+        run: |
+          echo "epds_url=https://certified-apppds-core-epds-pr-${PR}.up.railway.app" >> $GITHUB_OUTPUT
+          echo "auth_url=https://certified-appauth-service-epds-pr-${PR}.up.railway.app" >> $GITHUB_OUTPUT
+          echo "demo_url=https://certified-appdemo-epds-pr-${PR}.up.railway.app" >> $GITHUB_OUTPUT
+          echo "mailpit_url=https://mailpit-epds-pr-${PR}.up.railway.app" >> $GITHUB_OUTPUT
+
+      - name: Wait for all services
+        run: |
+          check() {
+            local URL=$1
+            for i in $(seq 1 30); do
+              if curl -sf "$URL" > /dev/null 2>&1; then
+                echo "✓ $URL is up"
+                return 0
+              fi
+              echo "  Attempt $i/30 failed, retrying in 10s..."
+              sleep 10
+            done
+            echo "::error::$URL timed out after 5 minutes"
+            exit 1
+          }
+          check "${{ steps.urls.outputs.epds_url }}/health"
+          check "${{ steps.urls.outputs.auth_url }}/health"
+          check "${{ steps.urls.outputs.demo_url }}"
+          check "${{ steps.urls.outputs.mailpit_url }}/readyz"
+
+      - name: Run e2e suite
+        env:
+          E2E_PDS_URL: ${{ steps.urls.outputs.epds_url }}
+          E2E_AUTH_URL: ${{ steps.urls.outputs.auth_url }}
+          E2E_DEMO_URL: ${{ steps.urls.outputs.demo_url }}
+          E2E_MAILPIT_URL: ${{ steps.urls.outputs.mailpit_url }}
+          E2E_MAILPIT_USER: ${{ secrets.E2E_MAILPIT_USER }}
+          E2E_MAILPIT_PASS: ${{ secrets.E2E_MAILPIT_PASS }}
+          E2E_HEADLESS: 'true'
+        run: pnpm test:e2e:headless
+
+      - name: Upload e2e report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: e2e-report
+          path: reports/
+          retention-days: 2
