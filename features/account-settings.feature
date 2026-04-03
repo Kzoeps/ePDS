@@ -5,7 +5,6 @@ Feature: Account settings dashboard
 
 Background:
   Given the ePDS test environment is running
-  And a returning user has a PDS account
 
   # --- Authentication for settings ---
 
