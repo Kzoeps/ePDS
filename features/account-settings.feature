@@ -13,6 +13,7 @@ Scenario: Unauthenticated user is redirected to login
   Then the browser is redirected to /account/login
 
 Scenario: Account settings login uses standalone OTP
+  Given a returning user has a PDS account
   When the user navigates to /account/login
   Then a login form is displayed (separate from the OAuth flow)
   When the user enters their email and verifies the OTP

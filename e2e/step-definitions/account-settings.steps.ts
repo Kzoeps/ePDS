@@ -534,6 +534,34 @@ Then(
 )
 
 Then(
+  'the account deleted confirmation page is shown',
+  async function (this: EpdsWorld) {
+    const page = getPage(this)
+    const authBase = escapeForRegex(testEnv.authUrl)
+
+    await expect(page).not.toHaveURL(
+      new RegExp(`^${authBase}/account(\\?.*)?$`),
+    )
+    await expect(
+      page.getByRole('heading', { name: 'Account Deleted' }),
+    ).toBeVisible()
+  },
+)
+
+Then(
+  'visiting \\/account redirects to \\/account\\/login',
+  async function (this: EpdsWorld) {
+    const page = getPage(this)
+    const authBase = escapeForRegex(testEnv.authUrl)
+
+    await page.goto(`${testEnv.authUrl}/account`)
+    await expect(page).toHaveURL(
+      new RegExp(`^${authBase}/account/login(\\?.*)?$`),
+    )
+  },
+)
+
+Then(
   "the user's PDS account no longer exists",
   async function (this: EpdsWorld) {
     if (!this.userDid) {
