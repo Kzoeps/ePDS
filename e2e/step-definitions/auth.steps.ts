@@ -402,3 +402,63 @@ Then('the login page renders normally', async function (this: EpdsWorld) {
 Then('the OTP flow still works to completion', function (this: EpdsWorld) {
   return this.skipIfNoMailpit()
 })
+
+// ---------------------------------------------------------------------------
+// Login hint resolution
+// ---------------------------------------------------------------------------
+
+When(
+  'the demo client initiates OAuth with the test email as login_hint',
+  async function (this: EpdsWorld) {
+    if (!this.testEmail) {
+      throw new Error(
+        'No test email set — "a returning user has a PDS account" step must run first',
+      )
+    }
+    const page = getPage(this)
+    await page.goto(
+      `${testEnv.demoUrl}/api/oauth/login?email=${encodeURIComponent(this.testEmail)}`,
+    )
+    await page.waitForLoadState('networkidle')
+  },
+)
+
+When(
+  "the demo client initiates OAuth with the user's handle as login_hint",
+  async function (this: EpdsWorld) {
+    if (!this.userHandle) {
+      throw new Error(
+        'No handle set — "a returning user has a PDS account" step must run first',
+      )
+    }
+    const page = getPage(this)
+    await page.goto(
+      `${testEnv.demoUrl}/api/oauth/login?handle=${encodeURIComponent(this.userHandle)}`,
+    )
+    await page.waitForLoadState('networkidle')
+  },
+)
+
+Then(
+  'the login page renders directly at the OTP verification step',
+  async function (this: EpdsWorld) {
+    const page = getPage(this)
+    await expect(page.locator('#step-otp.active')).toBeVisible({
+      timeout: 30_000,
+    })
+  },
+)
+
+Then(
+  'an OTP email is auto-sent to the test email',
+  async function (this: EpdsWorld) {
+    if (!testEnv.mailpitPass) return 'pending'
+    if (!this.testEmail) {
+      throw new Error(
+        'No test email set — "a returning user has a PDS account" step must run first',
+      )
+    }
+    const message = await waitForEmail(`to:${this.testEmail}`)
+    this.otpCode = await extractOtp(message.ID)
+  },
+)

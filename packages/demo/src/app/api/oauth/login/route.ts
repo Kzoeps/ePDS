@@ -188,8 +188,9 @@ export async function GET(request: Request) {
         }
 
         const parData2 = (await parRes2.json()) as { request_uri: string }
-        const loginHint = email
-          ? `&login_hint=${encodeURIComponent(email)}`
+        const hintValue = email || handle
+        const loginHint = hintValue
+          ? `&login_hint=${encodeURIComponent(hintValue)}`
           : ''
         const authUrl = `${authEndpoint}?client_id=${encodeURIComponent(clientId)}&request_uri=${encodeURIComponent(parData2.request_uri)}${loginHint}${handleModeParam}`
         console.log('[oauth/login] Redirecting to auth (after nonce retry)')
@@ -208,8 +209,9 @@ export async function GET(request: Request) {
     }
 
     const parData = (await parRes.json()) as { request_uri: string }
-    const loginHintParam = email
-      ? `&login_hint=${encodeURIComponent(email)}`
+    const hintValue = email || handle
+    const loginHintParam = hintValue
+      ? `&login_hint=${encodeURIComponent(hintValue)}`
       : ''
     const authUrl = `${authEndpoint}?client_id=${encodeURIComponent(clientId)}&request_uri=${encodeURIComponent(parData.request_uri)}${loginHintParam}${handleModeParam}`
 

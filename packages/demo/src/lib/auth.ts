@@ -136,7 +136,21 @@ export const PLC_DIRECTORY_URL =
 const RESOLVE_TIMEOUT = 5000
 
 export async function resolveHandleToDid(handle: string): Promise<string> {
-  // Try public XRPC endpoint first (works for all handles including *.bsky.social)
+  // Try configured PDS first — local DB lookup, fast and reliable for own handles
+  try {
+    const res = await fetch(
+      `${PDS_URL}/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handle)}`,
+      { signal: AbortSignal.timeout(RESOLVE_TIMEOUT) },
+    )
+    if (res.ok) {
+      const data = (await res.json()) as { did: string }
+      if (data.did) return data.did
+    }
+  } catch {
+    /* fall through */
+  }
+
+  // Try bsky.social for public Bluesky handles (e.g. *.bsky.social)
   try {
     const res = await fetch(
       `https://bsky.social/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handle)}`,
@@ -147,10 +161,10 @@ export async function resolveHandleToDid(handle: string): Promise<string> {
       if (data.did) return data.did
     }
   } catch {
-    /* fall through to well-known */
+    /* fall through */
   }
 
-  // Fallback: HTTP well-known (works for custom domain handles)
+  // Fallback: HTTP well-known (works for custom domain handles with Caddy)
   try {
     const res = await fetch(`https://${handle}/.well-known/atproto-did`, {
       signal: AbortSignal.timeout(RESOLVE_TIMEOUT),
@@ -158,7 +172,7 @@ export async function resolveHandleToDid(handle: string): Promise<string> {
     if (res.ok) {
       const text = await res.text()
       const did = text.trim().split('\n')[0]?.trim()
-      if (did?.startsWith('did:')) return did // eslint-disable-line @typescript-eslint/no-unnecessary-condition -- [0] may be undefined
+      if (did?.startsWith('did:')) return did
     }
   } catch {
     /* fall through */
