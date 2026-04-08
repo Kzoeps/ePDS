@@ -67,7 +67,18 @@ export function EmbeddedLogin({ pdsOrigin }: EmbeddedLoginProps) {
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      console.log('[embedded-login] message received', {
+        eventOrigin: event.origin,
+        expectedOrigin,
+        pageOrigin: window.location.origin,
+        data: event.data,
+      })
+
       if (event.origin !== expectedOrigin) {
+        console.warn('[embedded-login] origin mismatch, dropping message', {
+          eventOrigin: event.origin,
+          expectedOrigin,
+        })
         return
       }
 
@@ -80,6 +91,15 @@ export function EmbeddedLogin({ pdsOrigin }: EmbeddedLoginProps) {
           return
         }
 
+        console.log(
+          '[embedded-login] auth-complete accepted, calling /api/oauth/exchange',
+          {
+            codePresent: Boolean(code),
+            statePresent: Boolean(state),
+            iss,
+          },
+        )
+
         void fetch('/api/oauth/exchange', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -87,6 +107,12 @@ export function EmbeddedLogin({ pdsOrigin }: EmbeddedLoginProps) {
         })
           .then(async (res) => {
             const data = await res.json()
+
+            console.log('[embedded-login] /api/oauth/exchange response', {
+              ok: res.ok,
+              status: res.status,
+              data,
+            })
 
             if (!res.ok || !data?.ok) {
               throw new Error(data?.error ?? 'Token exchange failed')
