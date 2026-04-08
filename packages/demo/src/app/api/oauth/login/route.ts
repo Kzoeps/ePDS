@@ -193,6 +193,19 @@ export async function GET(request: Request) {
           ? `&login_hint=${encodeURIComponent(email)}`
           : ''
         const authUrl = `${authEndpoint}?client_id=${encodeURIComponent(clientId)}&request_uri=${encodeURIComponent(parData2.request_uri)}${loginHint}${handleModeParam}`
+        if (delivery === 'iframe') {
+          const iframeAuthUrl = `${authUrl}&epds_delivery=iframe`
+          const resp = NextResponse.json({ authorizeUrl: iframeAuthUrl })
+          resp.cookies.set(oauthCookie.name, oauthCookie.value, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'lax',
+            maxAge: 600,
+            path: '/',
+          })
+          return resp
+        }
+
         console.log('[oauth/login] Redirecting to auth (after nonce retry)')
         const resp2 = NextResponse.redirect(authUrl)
         resp2.cookies.set(oauthCookie.name, oauthCookie.value, {
