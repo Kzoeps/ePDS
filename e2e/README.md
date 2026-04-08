@@ -74,6 +74,40 @@ pnpm test:e2e
 pnpm test:e2e:headless
 ```
 
+### Run a single feature
+
+`pnpm test:e2e` and `pnpm test:e2e:headless` use `e2e/cucumber.mjs`, which
+defines a `paths` list. If you pass a feature path on the CLI, the current
+`cucumber-js` version merges that path with configured `paths`, so it can run
+multiple features.
+
+To run only one feature, invoke `cucumber-js` directly:
+
+```bash
+E2E_HEADLESS=true TSX_TSCONFIG_PATH=e2e/tsconfig.e2e.json \
+node --import tsx/esm ./node_modules/@cucumber/cucumber/bin/cucumber-js \
+  --import 'e2e/step-definitions/**/*.ts' \
+  --import 'e2e/support/**/*.ts' \
+  --format pretty \
+  --format html:reports/e2e.html \
+  --tags 'not @manual and not @docker-only and not @pending' \
+  --strict \
+  features/account-settings.feature
+```
+
+### Run a single scenario by name
+
+Use `--name` with a scenario title (and keep the feature path scoped to reduce
+search time):
+
+```bash
+pnpm run test:e2e:headless --name "User deletes their account"
+```
+
+You cannot run a step definition file directly (for example
+`e2e/step-definitions/account-settings.steps.ts`). Cucumber runs feature files
+or scenarios and loads step definitions via `--import`.
+
 ### What to expect
 
 - **OTP / email scenarios** are automatically marked `pending` (not failed)
@@ -91,11 +125,18 @@ the verification code without a real mail server.
 
 ### How the suite uses Mailpit
 
-- **Before each scenario** — the `Before` hook calls
-  `DELETE /api/v1/messages` to wipe the inbox, ensuring a clean slate.
-- **Email steps** — poll `GET /api/v1/search?query=to:<email>` every 500 ms
-  until the OTP email arrives (up to 15 seconds), then fetch the plain-text
-  view at `/view/<id>.txt` and extract the code with a regex.
+- **Scenario hygiene** — the global setup clears any leftover inbox state at
+  suite start, and per-scenario cleanup deletes messages for the scenario's
+  test recipient to avoid cross-scenario bleed.
+- **OTP retrieval** — before triggering OTP send for a recipient, tests clear
+  `to:<email>` via Mailpit search delete. After submit, they poll
+  `GET /api/v1/search?query=to:<email>` every 500 ms until an OTP email
+  arrives.
+- **Why clear before send** — this prevents stale OTP reuse when multiple OTP
+  emails are sent to the same recipient in one scenario (for example composed
+  setup + login, secondary-session login, retries, and resend flows).
+- **Code extraction** — once an email is found, tests fetch
+  `/view/<id>.txt` and extract the OTP with a regex.
 - **Auth** — requests use HTTP Basic auth (`E2E_MAILPIT_USER` /
   `E2E_MAILPIT_PASS`) encoded as an `Authorization: Basic ...` header.
 

@@ -10,16 +10,26 @@ import { chromium, type Browser } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import type { EpdsWorld } from './world.js'
 import { testEnv } from './env.js'
+import { mailpitAuthHeader, clearMailpit } from './mailpit.js'
 
-// Railway services have cold-start latency. Default cucumber step timeout
-// is 5 seconds which is too short for OAuth redirect chains.
-setDefaultTimeout(60_000)
+// Railway services have cold-start latency and SMTP delivery can be slow.
+// Setup steps like "a returning user has already approved the demo client"
+// involve multiple email waits + browser flows and need more headroom.
+setDefaultTimeout(120_000)
 
 export let sharedBrowser: Browser | undefined
 
 BeforeAll(async function () {
   await mkdir('reports/screenshots', { recursive: true })
   sharedBrowser = await chromium.launch({ headless: testEnv.headless })
+
+  // Wipe any emails left over from previous runs
+  if (testEnv.mailpitPass) {
+    await fetch(`${testEnv.mailpitUrl}/api/v1/messages`, {
+      method: 'DELETE',
+      headers: { Authorization: mailpitAuthHeader() },
+    })
+  }
 })
 
 Before(async function (this: EpdsWorld) {
@@ -42,7 +52,21 @@ After(async function (this: EpdsWorld, scenario) {
       fullPage: true,
     })
   }
+  if (this.secondaryContext) await this.secondaryContext.close()
   if (this.context) await this.context.close()
+
+  // Clear emails sent to this scenario's test email so they don't bleed into the next scenario
+  if (testEnv.mailpitPass && this.testEmail) {
+    try {
+      await clearMailpit(this.testEmail)
+    } catch (err) {
+      // Cleanup failure should not fail a passing scenario — log and move on
+      console.warn(
+        `After hook: clearMailpit cleanup failed for ${this.testEmail}:`,
+        err,
+      )
+    }
+  }
 })
 
 AfterAll(async function () {
