@@ -17,6 +17,8 @@ export function EmbeddedLogin({ pdsOrigin }: EmbeddedLoginProps) {
   const [authorizeUrl, setAuthorizeUrl] = useState<string | null>(null)
   const [status, setStatus] = useState<EmbeddedLoginStatus>('idle')
   const [error, setError] = useState<string | null>(null)
+  const [showModal, setShowModal] = useState(false)
+  const [iframeLoaded, setIframeLoaded] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const expectedOrigin = useMemo(() => {
     try {
@@ -29,10 +31,14 @@ export function EmbeddedLogin({ pdsOrigin }: EmbeddedLoginProps) {
   const reset = () => {
     setAuthorizeUrl(null)
     setError(null)
+    setShowModal(false)
+    setIframeLoaded(false)
     setStatus('idle')
   }
 
   const startLogin = async (email?: string) => {
+    setShowModal(true)
+    setIframeLoaded(false)
     setStatus('loading')
     setError(null)
 
@@ -61,6 +67,7 @@ export function EmbeddedLogin({ pdsOrigin }: EmbeddedLoginProps) {
           ? startError.message
           : 'Failed to start login',
       )
+      setShowModal(false)
       setStatus('error')
     }
   }
@@ -87,6 +94,8 @@ export function EmbeddedLogin({ pdsOrigin }: EmbeddedLoginProps) {
 
         if (!code || !state || !iss) {
           setError('Missing authorization response data')
+          setShowModal(false)
+          setAuthorizeUrl(null)
           setStatus('error')
           return
         }
@@ -119,6 +128,7 @@ export function EmbeddedLogin({ pdsOrigin }: EmbeddedLoginProps) {
             }
 
             setStatus('success')
+            setShowModal(false)
             setAuthorizeUrl(null)
             window.location.href = '/welcome'
           })
@@ -128,6 +138,8 @@ export function EmbeddedLogin({ pdsOrigin }: EmbeddedLoginProps) {
                 ? exchangeError.message
                 : 'Token exchange failed',
             )
+            setShowModal(false)
+            setAuthorizeUrl(null)
             setStatus('error')
           })
       }
@@ -135,6 +147,7 @@ export function EmbeddedLogin({ pdsOrigin }: EmbeddedLoginProps) {
       if (event.data?.type === 'epds:auth-error') {
         const response = event.data.response ?? {}
         setError(response.error_description || response.error || 'Login failed')
+        setShowModal(false)
         setStatus('error')
         setAuthorizeUrl(null)
       }
@@ -186,13 +199,7 @@ export function EmbeddedLogin({ pdsOrigin }: EmbeddedLoginProps) {
         </button>
       )}
 
-      {status === 'loading' && (
-        <div style={{ color: '#6b7280', fontSize: '14px' }}>
-          Starting embedded login...
-        </div>
-      )}
-
-      {status === 'authenticating' && authorizeUrl && (
+      {showModal && (status === 'loading' || status === 'authenticating') && (
         <div
           style={{
             display: 'grid',
@@ -200,18 +207,61 @@ export function EmbeddedLogin({ pdsOrigin }: EmbeddedLoginProps) {
             justifyItems: 'center',
           }}
         >
-          <iframe
-            ref={iframeRef}
-            title="Embedded login"
-            src={authorizeUrl}
+          <div
             style={{
+              position: 'relative',
               width: '480px',
               height: '600px',
-              border: 'none',
               borderRadius: '12px',
               boxShadow: '0 16px 32px rgba(0, 0, 0, 0.15)',
+              overflow: 'hidden',
+              background: '#fff',
             }}
-          />
+          >
+            {authorizeUrl ? (
+              <iframe
+                ref={iframeRef}
+                title="Embedded login"
+                src={authorizeUrl}
+                onLoad={() => {
+                  setIframeLoaded(true)
+                }}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  border: 'none',
+                }}
+              />
+            ) : null}
+
+            {!iframeLoaded && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'grid',
+                  placeItems: 'center',
+                  gap: '8px',
+                  background: 'rgba(255, 255, 255, 0.92)',
+                  color: '#374151',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                }}
+              >
+                <div
+                  style={{
+                    width: '22px',
+                    height: '22px',
+                    borderRadius: '9999px',
+                    border: '2px solid #d1d5db',
+                    borderTopColor: '#2563eb',
+                    animation: 'spin 0.8s linear infinite',
+                  }}
+                />
+                <div>Loading secure sign-in...</div>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={reset}
@@ -229,6 +279,8 @@ export function EmbeddedLogin({ pdsOrigin }: EmbeddedLoginProps) {
           </button>
         </div>
       )}
+
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       {status === 'error' && error && (
         <div
