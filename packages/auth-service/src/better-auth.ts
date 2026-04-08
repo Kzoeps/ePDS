@@ -163,6 +163,14 @@ export function createBetterAuth(
       updateAge: sessionUpdateAge,
     },
 
+    advanced: {
+      defaultCookieAttributes: {
+        sameSite: 'none',
+        secure: true,
+        partitioned: true,
+      },
+    },
+
     socialProviders,
 
     plugins: [
