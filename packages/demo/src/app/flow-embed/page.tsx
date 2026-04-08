@@ -21,9 +21,7 @@ export default function FlowEmbedPage() {
       <p style={{ color: '#6b7280', margin: 0 }}>
         This page demonstrates the iframe-embedded auth flow.
       </p>
-      <EmbeddedLogin
-        pdsOrigin={process.env.NEXT_PUBLIC_PDS_URL ?? 'https://localhost:3000'}
-      />
+      <EmbeddedLogin pdsOrigin="https://karmas-e2e-pds.up.railway.app" />
     </main>
   )
 }
