@@ -16,24 +16,64 @@ interface MailpitSearchResponse {
   messages?: MailpitMessage[]
 }
 
+function isAbortError(err: unknown): boolean {
+  if (err instanceof DOMException) {
+    return err.name === 'AbortError'
+  }
+  return err instanceof Error && err.name === 'AbortError'
+}
+
 async function searchMessages(
   query: string,
   limit: number,
+  opts?: { signal?: AbortSignal; timeoutMs?: number },
 ): Promise<MailpitMessage[]> {
-  const res = await fetch(
-    `${testEnv.mailpitUrl}/api/v1/search?query=${encodeURIComponent(query)}&limit=${limit}`,
-    { headers: { Authorization: mailpitAuthHeader() } },
-  )
-
-  if (!res.ok) {
-    if (res.status >= 400 && res.status < 500) {
-      throw new Error(`Mailpit search failed with client error: ${res.status}`)
-    }
-    throw new Error(`Mailpit search failed with server error: ${res.status}`)
+  const controller = new AbortController()
+  const onAbort = (): void => {
+    controller.abort()
   }
 
-  const data = (await res.json()) as MailpitSearchResponse
-  return data.messages ?? []
+  if (opts?.signal?.aborted) {
+    controller.abort()
+  } else if (opts?.signal) {
+    opts.signal.addEventListener('abort', onAbort, { once: true })
+  }
+
+  const timeoutId =
+    opts?.timeoutMs !== undefined
+      ? setTimeout(() => {
+          controller.abort()
+        }, opts.timeoutMs)
+      : undefined
+
+  try {
+    const res = await fetch(
+      `${testEnv.mailpitUrl}/api/v1/search?query=${encodeURIComponent(query)}&limit=${limit}`,
+      {
+        headers: { Authorization: mailpitAuthHeader() },
+        signal: controller.signal,
+      },
+    )
+
+    if (!res.ok) {
+      if (res.status >= 400 && res.status < 500) {
+        throw new Error(
+          `Mailpit search failed with client error: ${res.status}`,
+        )
+      }
+      throw new Error(`Mailpit search failed with server error: ${res.status}`)
+    }
+
+    const data = (await res.json()) as MailpitSearchResponse
+    return data.messages ?? []
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId)
+    }
+    if (opts?.signal) {
+      opts.signal.removeEventListener('abort', onAbort)
+    }
+  }
 }
 
 export function mailpitAuthHeader(): string {
@@ -49,20 +89,36 @@ export async function waitForEmail(
   timeoutMs = 60_000,
 ): Promise<MailpitMessage> {
   const interval = 500
-  const attempts = Math.ceil(timeoutMs / interval)
+  const deadline = Date.now() + timeoutMs
 
-  for (let i = 0; i < attempts; i++) {
+  while (true) {
+    const remainingMs = deadline - Date.now()
+    if (remainingMs <= 0) {
+      break
+    }
+
     try {
-      const messages = await searchMessages(query, 1)
+      const messages = await searchMessages(query, 1, {
+        timeoutMs: remainingMs,
+      })
       if (messages.length > 0) {
         return messages[0]
       }
     } catch (err) {
-      if (err instanceof Error && err.message.includes('client error')) {
+      if (
+        !isAbortError(err) &&
+        err instanceof Error &&
+        err.message.includes('client error')
+      ) {
         throw err
       }
     }
-    await new Promise<void>((r) => setTimeout(r, interval))
+
+    const sleepMs = Math.min(interval, Math.max(0, deadline - Date.now()))
+    if (sleepMs <= 0) {
+      break
+    }
+    await new Promise<void>((r) => setTimeout(r, sleepMs))
   }
 
   throw new Error(`No email matching "${query}" arrived within ${timeoutMs}ms`)
