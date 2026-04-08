@@ -6,22 +6,46 @@
  * after checking testEnv.mailpitPass where relevant.
  */
 
+import crypto from 'node:crypto'
 import { expect } from '@playwright/test'
 import type { EpdsWorld } from './world.js'
 import { testEnv } from './env.js'
 import { waitForEmail, extractOtp, clearMailpit } from './mailpit.js'
 
 /**
- * Drive the full new-user OAuth sign-up flow through the demo app:
+ * Generate a valid handle local part for a new test account.
+ *
+ * 10 lowercase hex chars: satisfies the server's 5–20 `[a-z0-9-]` rule
+ * (no leading/trailing hyphens, since hex has no hyphens at all) and the
+ * narrower `[a-z0-9]{4,20}` pattern the e2e tests assert elsewhere.
+ * Collision probability across a test run is negligible (40 bits of entropy).
+ */
+function generateHandleLocalPart(): string {
+  return crypto.randomBytes(5).toString('hex')
+}
+
+/**
+ * Drive the full new-user OAuth sign-up flow through the demo app.
+ *
+ * The default auth-service config has `handleMode='picker'`, so after OTP
+ * verification the user is redirected to /auth/choose-handle and must pick a
+ * handle before being returned to the demo /welcome page. Random-handle mode
+ * (where the picker is skipped automatically) would need a different auth-
+ * service config and is intentionally not exercised here.
+ *
+ * Steps:
  *   1. Navigate to demoUrl
  *   2. Fill #email with the provided email, submit
  *   3. Wait for #step-otp.active (30 s)
  *   4. Fetch OTP from Mailpit via waitForEmail + extractOtp
  *   5. Fill #code with OTP, click #form-verify-otp .btn-primary
- *   6. Wait for URL matching "**\/welcome" (30 s)
- *   7. Capture DID and handle from page body text
- *   8. Store testEmail, userDid, and userHandle on the world
- *   9. Clear Mailpit inbox for the email
+ *   6. Wait for /auth/choose-handle, fill #handle-input with a generated
+ *      local part, wait for the availability check to confirm "available",
+ *      then click #submit-btn
+ *   7. Wait for URL matching "**\/welcome" (30 s)
+ *   8. Capture DID and handle from page body text
+ *   9. Store testEmail, userDid, and userHandle on the world
+ *  10. Clear Mailpit inbox for the email
  *
  * Callers must check testEnv.mailpitPass before calling this function.
  */
@@ -47,6 +71,20 @@ export async function createAccountViaOAuth(
   const otp = await extractOtp(message.ID)
   await page.fill('#code', otp)
   await page.click('#form-verify-otp .btn-primary')
+
+  // Pick a handle on the /auth/choose-handle page. The page runs client-side
+  // availability checks debounced at 500ms, so we wait for the "available"
+  // status text (not just the submit button state) before clicking Create —
+  // otherwise the POST can race the check and land on a disabled button or
+  // stale state.
+  await page.waitForURL('**/auth/choose-handle', { timeout: 30_000 })
+  const localPart = generateHandleLocalPart()
+  await page.fill('#handle-input', localPart)
+  await expect(page.locator('#handle-status.available')).toBeVisible({
+    timeout: 10_000,
+  })
+  await page.click('#submit-btn')
+
   await page.waitForURL('**/welcome', { timeout: 30_000 })
 
   const bodyText = await page.locator('body').innerText()
