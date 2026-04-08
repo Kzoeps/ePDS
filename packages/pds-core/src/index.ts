@@ -35,6 +35,7 @@ import {
   resolveClientMetadata,
   getClientCss,
 } from '@certified-app/shared'
+import { createClientCssInjectionMiddleware } from './lib/client-css-injection.js'
 
 const logger = createLogger('pds-core')
 
@@ -449,77 +450,12 @@ async function main() {
     .filter(Boolean)
 
   if (trustedClients.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Express middleware injected into raw stack
-    const cssInjectionMiddleware = async (req: any, res: any, next: any) => {
-      if (req.method !== 'GET' || req.path !== '/oauth/authorize') {
-        return next()
-      }
-
-      const clientId = req.query?.client_id as string | undefined
-      if (!clientId || !trustedClients.includes(clientId)) {
-        return next()
-      }
-
-      try {
-        const metadata = await resolveClientMetadata(clientId)
-        const css = getClientCss(clientId, metadata, trustedClients)
-        if (!css) {
-          return next()
-        }
-
-        // Compute SHA256 hash of the CSS for CSP
-        const cssHash = createHash('sha256').update(css).digest('base64')
-        const styleTag = `<style>${css}</style>`
-
-        // Wrap res.setHeader to append the CSS hash to style-src in CSP
-        const origSetHeader = res.setHeader.bind(res)
-        res.setHeader = (name: string, value: string | string[]) => {
-          if (
-            name.toLowerCase() === 'content-security-policy' &&
-            typeof value === 'string'
-          ) {
-            // Append our hash to the style-src directive
-            value = value.replace(
-              /style-src\s+([^;]*)/,
-              `style-src $1 'sha256-${cssHash}'`,
-            )
-          }
-          return origSetHeader(name, value)
-        }
-
-        // Wrap res.end to inject the <style> tag before </head>
-        const origEnd = res.end.bind(res)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- wrapping Node http.ServerResponse.end() which has complex overloads
-        res.end = (chunk: any, ...args: any[]) => {
-          let rewritten = false
-          if (typeof chunk === 'string' && chunk.includes('</head>')) {
-            chunk = chunk.replace('</head>', `${styleTag}</head>`)
-            rewritten = true
-          } else if (Buffer.isBuffer(chunk)) {
-            const str = chunk.toString('utf-8')
-            if (str.includes('</head>')) {
-              chunk = str.replace('</head>', `${styleTag}</head>`)
-              rewritten = true
-            }
-          }
-          if (rewritten) {
-            // Body length changed — remove stale Content-Length and ETag
-            // so the client doesn't see a truncated or incorrectly cached response.
-            res.removeHeader('Content-Length')
-            res.removeHeader('ETag')
-          }
-          return origEnd(chunk, ...args)
-        }
-
-        next()
-      } catch (err) {
-        logger.warn(
-          { err, clientId },
-          'Failed to resolve client CSS, skipping injection',
-        )
-        next()
-      }
-    }
+    const cssInjectionMiddleware = createClientCssInjectionMiddleware({
+      trustedClients,
+      resolveClientMetadata,
+      getClientCss,
+      logger,
+    })
 
     // Insert into Express stack after expressInit (same approach as AS metadata)
     pds.app.use(cssInjectionMiddleware)
