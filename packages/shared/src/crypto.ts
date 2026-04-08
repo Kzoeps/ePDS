@@ -53,6 +53,7 @@ export interface CallbackParams {
   approved: string
   new_account: string
   handle?: string // only set for new account creation with chosen handle
+  delivery?: string
 }
 
 /**
@@ -74,6 +75,7 @@ export function signCallback(
     params.approved,
     params.new_account,
     params.handle ?? '', // empty string when absent
+    params.delivery ?? 'redirect',
     ts,
   ].join('\n')
   const sig = crypto.createHmac('sha256', secret).update(payload).digest('hex')
@@ -106,6 +108,7 @@ export function verifyCallback(
     params.approved,
     params.new_account,
     params.handle ?? '', // empty string when absent — matches signCallback sentinel
+    params.delivery ?? 'redirect',
     ts,
   ].join('\n')
   const expected = crypto

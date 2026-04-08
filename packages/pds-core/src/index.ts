@@ -94,6 +94,7 @@ async function main() {
     const approvedStr = req.query.approved as string
     const newAccountStr = req.query.new_account as string
     const handleParam = req.query.handle as string | undefined
+    const deliveryParam = req.query.delivery as string | undefined
     const signatureValid = verifyCallback(
       {
         request_uri: requestUri,
@@ -101,6 +102,7 @@ async function main() {
         approved: approvedStr,
         new_account: newAccountStr,
         handle: handleParam,
+        delivery: deliveryParam,
       },
       ts,
       sig,
@@ -118,6 +120,8 @@ async function main() {
       }
       return
     }
+
+    const delivery = deliveryParam
 
     // Extract handle local part from verified callback params (tamper-proof — covered by HMAC).
     // The callback now carries only the local part (e.g. 'alice'); we append our own
@@ -327,6 +331,29 @@ async function main() {
       const redirectUrl = new URL(redirectUri)
       const responseMode = parameters.response_mode || 'query'
 
+      if (delivery === 'iframe') {
+        const targetOrigin = new URL(redirectUri).origin
+        res.removeHeader('X-Frame-Options')
+        res.setHeader(
+          'Content-Security-Policy',
+          `default-src 'none'; script-src 'unsafe-inline'; frame-ancestors ${targetOrigin}`,
+        )
+        res.setHeader('Cache-Control', 'no-store')
+        res.type('html').send(
+          renderPostMessagePage({
+            code,
+            state: parameters.state,
+            iss: pdsUrl,
+            targetOrigin,
+          }),
+        )
+        logger.info(
+          { did, redirectUri, delivery },
+          'Auth code issued via postMessage',
+        )
+        return
+      }
+
       const redirectParams: [string, string][] = [
         ['iss', pdsUrl],
         ['code', code],
@@ -358,6 +385,24 @@ async function main() {
         )
         const redirectUri = requestData?.parameters?.redirect_uri
         if (redirectUri) {
+          if (delivery === 'iframe') {
+            const targetOrigin = new URL(redirectUri).origin
+            res.removeHeader('X-Frame-Options')
+            res.setHeader(
+              'Content-Security-Policy',
+              `default-src 'none'; script-src 'unsafe-inline'; frame-ancestors ${targetOrigin}`,
+            )
+            res.setHeader('Cache-Control', 'no-store')
+            res.type('html').send(
+              renderErrorPostMessagePage({
+                error: 'server_error',
+                errorDescription: 'Authentication failed',
+                state: requestData.parameters.state,
+                targetOrigin,
+              }),
+            )
+            return
+          }
           const errorUrl = new URL(redirectUri)
           errorUrl.searchParams.set('error', 'server_error')
           errorUrl.searchParams.set(
@@ -663,6 +708,54 @@ function renderError(message: string): string {
 <head><meta charset="utf-8"><title>Error</title></head>
 <body><p style="color:red;padding:20px">${escapeHtml(message)}</p></body>
 </html>`
+}
+
+function renderPostMessagePage(opts: {
+  code: string
+  state?: string
+  iss: string
+  targetOrigin: string
+}): string {
+  return `<!DOCTYPE html>
+<html><head><title>Authorization Complete</title></head>
+<body>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  window.parent.postMessage({
+    type: 'epds:auth-complete',
+    response: {
+      code: ${JSON.stringify(opts.code)},
+      state: ${JSON.stringify(opts.state ?? '')},
+      iss: ${JSON.stringify(opts.iss)}
+    }
+  }, ${JSON.stringify(opts.targetOrigin)});
+});
+</script>
+</body></html>`
+}
+
+function renderErrorPostMessagePage(opts: {
+  error: string
+  errorDescription: string
+  state?: string
+  targetOrigin: string
+}): string {
+  return `<!DOCTYPE html>
+<html><head><title>Authorization Failed</title></head>
+<body>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  window.parent.postMessage({
+    type: 'epds:auth-error',
+    response: {
+      error: ${JSON.stringify(opts.error)},
+      error_description: ${JSON.stringify(opts.errorDescription)},
+      state: ${JSON.stringify(opts.state ?? '')}
+    }
+  }, ${JSON.stringify(opts.targetOrigin)});
+});
+</script>
+</body></html>`
 }
 
 main().catch((err: unknown) => {

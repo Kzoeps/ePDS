@@ -38,6 +38,10 @@ export function createConsentRouter(ctx: AuthServiceContext): Router {
         return
       }
 
+      if (flow.delivery === 'iframe') {
+        overrideIframeHeaders(res, flow.clientId)
+      }
+
       const email = req.query.email as string | undefined
       const isNew = req.query.new === '1'
       const clientId = flow.clientId ?? ''
@@ -95,6 +99,7 @@ export function createConsentRouter(ctx: AuthServiceContext): Router {
     let email: string
     let isNew: boolean
     let clientId: string
+    let delivery: string | undefined
 
     if (flowId) {
       // New mode: look up auth_flow by flow_id
@@ -110,10 +115,15 @@ export function createConsentRouter(ctx: AuthServiceContext): Router {
         return
       }
 
+      if (flow.delivery === 'iframe') {
+        overrideIframeHeaders(res, flow.clientId)
+      }
+
       requestUri = flow.requestUri
       email = ((req.body.email as string) || '').trim().toLowerCase()
       isNew = req.body.is_new === '1'
       clientId = flow.clientId ?? ''
+      delivery = flow.delivery
 
       if (!email) {
         res.status(400).send('<p>Missing email parameter</p>')
@@ -157,6 +167,7 @@ export function createConsentRouter(ctx: AuthServiceContext): Router {
       email,
       approved: '1',
       new_account: isNew ? '1' : '0',
+      ...(delivery ? { delivery } : {}),
     }
     const { sig, ts } = signCallback(
       callbackParams,
@@ -175,6 +186,46 @@ export function createConsentRouter(ctx: AuthServiceContext): Router {
   })
 
   return router
+}
+
+function overrideIframeHeaders(
+  res: Response,
+  clientId: string | null | undefined,
+): void {
+  res.removeHeader('X-Frame-Options')
+
+  const trustedClients = (process.env.PDS_OAUTH_TRUSTED_CLIENTS ?? '')
+    .split(',')
+    .filter(Boolean)
+  const allowedOrigins = trustedClients
+    .map((client) => {
+      try {
+        return new URL(client).origin
+      } catch {
+        return null
+      }
+    })
+    .filter((origin): origin is string => Boolean(origin))
+    .join(' ')
+
+  let imgSrc = "'self' data:"
+  if (clientId) {
+    try {
+      const clientOrigin = new URL(clientId).origin
+      if (clientOrigin && clientOrigin !== 'null') {
+        imgSrc += ` ${clientOrigin}`
+      }
+    } catch {
+      /* not a valid URL, keep default */
+    }
+  }
+
+  const frameAncestors = ["'self'", allowedOrigins].filter(Boolean).join(' ')
+
+  res.setHeader(
+    'Content-Security-Policy',
+    `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src ${imgSrc}; connect-src 'self'; frame-ancestors ${frameAncestors}`,
+  )
 }
 
 function renderConsent(opts: {

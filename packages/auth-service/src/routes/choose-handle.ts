@@ -22,7 +22,7 @@ import {
   escapeHtml,
   signCallback,
   validateLocalPart,
-  type HandleMode,
+  type AuthFlowRow,
 } from '@certified-app/shared'
 import { fromNodeHeaders } from 'better-auth/node'
 import { getDidByEmail } from '../lib/get-did-by-email.js'
@@ -52,10 +52,7 @@ export function createChooseHandleRouter(
     res: Response,
   ): Promise<{
     flowId: string
-    flow: {
-      requestUri: string
-      handleMode: HandleMode | null
-    }
+    flow: Pick<AuthFlowRow, 'requestUri' | 'handleMode' | 'delivery'>
     email: string
   } | null> {
     // Guard 1: auth_flow cookie
@@ -112,6 +109,41 @@ export function createChooseHandleRouter(
     return { flowId, flow, email: session.user.email.toLowerCase() }
   }
 
+  function applyIframeHeaders(req: Request, res: Response): void {
+    res.removeHeader('X-Frame-Options')
+    const trustedClients = (process.env.PDS_OAUTH_TRUSTED_CLIENTS ?? '')
+      .split(',')
+      .filter(Boolean)
+    const allowedOrigins = trustedClients
+      .map((client) => {
+        try {
+          return new URL(client).origin
+        } catch {
+          return ''
+        }
+      })
+      .filter(Boolean)
+    const frameAncestors = [`'self'`, ...allowedOrigins].join(' ')
+
+    let imgSrc = "'self' data:"
+    const clientId = (req.query.client_id as string) || req.body?.client_id
+    if (clientId && typeof clientId === 'string') {
+      try {
+        const clientOrigin = new URL(clientId).origin
+        if (clientOrigin && clientOrigin !== 'null') {
+          imgSrc += ` ${clientOrigin}`
+        }
+      } catch {
+        /* not a valid URL, keep default */
+      }
+    }
+
+    res.setHeader(
+      'Content-Security-Policy',
+      `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src ${imgSrc}; connect-src 'self'; frame-ancestors ${frameAncestors}`,
+    )
+  }
+
   // ---------------------------------------------------------------------------
   // Handler 1: GET /auth/choose-handle — Render handle picker page
   // ---------------------------------------------------------------------------
@@ -119,10 +151,14 @@ export function createChooseHandleRouter(
     const result = await getFlowAndSession(req, res)
     if (!result) return
 
-    const { email, flowId } = result
+    const { email, flowId, flow } = result
+
+    if (flow.delivery === 'iframe') {
+      applyIframeHeaders(req, res)
+    }
 
     // Guard: reject flows with handleMode='random' — they should skip the picker entirely
-    if (result.flow.handleMode === 'random') {
+    if (flow.handleMode === 'random') {
       logger.info(
         { email, flowId, handleMode: 'random' },
         'Random flow reached choose-handle — redirecting to /auth/complete',
@@ -146,17 +182,13 @@ export function createChooseHandleRouter(
     // user is on this page. atproto's AUTHORIZATION_INACTIVITY_TIMEOUT is 5 min
     // — without this ping, users who take >5 min to pick a handle would hit
     // "This request has expired" inside epds-callback after account creation.
-    const ping = await pingParRequest(
-      result.flow.requestUri,
-      pdsUrl,
-      internalSecret,
-    )
+    const ping = await pingParRequest(flow.requestUri, pdsUrl, internalSecret)
     if (!ping.ok) {
       logger.warn(
         {
           status: ping.status,
           err: ping.err,
-          requestUri: result.flow.requestUri,
+          requestUri: flow.requestUri,
         },
         'Failed to extend request_uri on choose-handle',
       )
@@ -174,7 +206,7 @@ export function createChooseHandleRouter(
     const error = rawError
       ? (KNOWN_ERROR_MESSAGES[rawError] ?? rawError)
       : undefined
-    const showRandomButton = result.flow.handleMode === 'picker-with-random'
+    const showRandomButton = flow.handleMode === 'picker-with-random'
     res
       .type('html')
       .send(
@@ -195,6 +227,10 @@ export function createChooseHandleRouter(
     if (!result) return
 
     const { flowId, flow, email } = result
+
+    if (flow.delivery === 'iframe') {
+      applyIframeHeaders(req, res)
+    }
 
     // Guard: reject flows with handleMode='random' — they should skip the picker entirely
     if (flow.handleMode === 'random') {
@@ -326,6 +362,7 @@ export function createChooseHandleRouter(
       approved: '1',
       new_account: '1',
       handle: normalizedLocal,
+      delivery: flow.delivery,
     }
     const { sig, ts } = signCallback(
       callbackParams,

@@ -83,6 +83,8 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
     const requestUri = req.query.request_uri as string | undefined
     const clientId = req.query.client_id as string | undefined
     const loginHint = req.query.login_hint as string | undefined
+    let delivery: 'iframe' | 'redirect' =
+      req.query.epds_delivery === 'iframe' ? 'iframe' : 'redirect'
     if (!requestUri) {
       res
         .status(400)
@@ -117,6 +119,8 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
     const existingFlow = ctx.db.getAuthFlowByRequestUri(requestUri)
     if (existingFlow) {
       flowId = existingFlow.flowId
+      // Preserve the existing flow's delivery to keep idempotent behavior.
+      delivery = existingFlow.delivery
       logger.warn(
         {
           flowId,
@@ -134,6 +138,7 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
           requestUri,
           clientId: clientId ?? null,
           handleMode,
+          delivery,
           expiresAt: Date.now() + AUTH_FLOW_TTL_MS,
         })
       } catch (err) {
@@ -150,8 +155,9 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
     res.cookie(AUTH_FLOW_COOKIE, flowId, {
       httpOnly: true,
       secure: process.env.NODE_ENV !== 'development',
-      sameSite: 'lax',
+      sameSite: delivery === 'iframe' ? 'none' : 'lax',
       maxAge: AUTH_FLOW_TTL_MS,
+      ...(delivery === 'iframe' ? { partitioned: true } : {}),
     })
 
     const clientName =
@@ -208,6 +214,34 @@ export function createLoginPageRouter(ctx: AuthServiceContext): Router {
       },
       'Serving login page for auth_flow',
     )
+
+    if (delivery === 'iframe') {
+      res.removeHeader('X-Frame-Options')
+      const trustedClients = (process.env.PDS_OAUTH_TRUSTED_CLIENTS ?? '')
+        .split(',')
+        .filter(Boolean)
+      const allowedOrigins = trustedClients
+        .map((client) => {
+          try {
+            return new URL(client).origin
+          } catch {
+            return ''
+          }
+        })
+        .filter(Boolean)
+        .join(' ')
+      if (allowedOrigins) {
+        const currentCsp = res.getHeader('Content-Security-Policy')?.toString()
+        const withoutFrameAncestors = currentCsp
+          ? currentCsp.replace(/frame-ancestors[^;]*(;|$)/, '').trim()
+          : ''
+        const separator = withoutFrameAncestors ? '; ' : ''
+        res.setHeader(
+          'Content-Security-Policy',
+          `${withoutFrameAncestors}${separator}frame-ancestors 'self' ${allowedOrigins}`,
+        )
+      }
+    }
 
     // Use the resolved email (not the raw loginHint) for pre-filling forms.
     // This ensures handle-based hints get resolved to the correct email.

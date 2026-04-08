@@ -134,6 +134,7 @@ describe('signCallback / verifyCallback', () => {
       params.approved,
       params.new_account,
       '', // handle sentinel (absent)
+      'redirect',
       staleTs,
     ].join('\n')
     const { createHmac } = await import('node:crypto')
@@ -149,6 +150,7 @@ describe('signCallback / verifyCallback', () => {
       params.approved,
       params.new_account,
       '', // handle sentinel (absent)
+      'redirect',
       futureTs,
     ].join('\n')
     const { createHmac } = await import('node:crypto')
@@ -249,5 +251,51 @@ describe('signCallback / verifyCallback with handle', () => {
       handle: 'evil.pds.example.com',
     }
     expect(verifyCallback(tamperedParams, ts, sig, secret)).toBe(false)
+  })
+})
+
+describe('signCallback / verifyCallback with delivery', () => {
+  it('signs and verifies callback with delivery param', () => {
+    const secret = 'test-secret'
+    const params: CallbackParams = {
+      request_uri: 'urn:ietf:params:oauth:request_uri:test',
+      email: 'alice@example.com',
+      approved: '1',
+      new_account: '1',
+      delivery: 'iframe',
+    }
+    const { sig, ts } = signCallback(params, secret)
+    expect(verifyCallback(params, ts, sig, secret)).toBe(true)
+  })
+
+  it('signs and verifies callback with delivery undefined sentinel', () => {
+    const secret = 'test-secret'
+    const baseParams: CallbackParams = {
+      request_uri: 'urn:ietf:params:oauth:request_uri:test',
+      email: 'alice@example.com',
+      approved: '1',
+      new_account: '1',
+    }
+    const withUndefined: CallbackParams = {
+      ...baseParams,
+      delivery: undefined,
+    }
+    const { sig, ts } = signCallback(withUndefined, secret)
+    expect(verifyCallback(baseParams, ts, sig, secret)).toBe(true)
+  })
+
+  it('rejects delivery mismatch against signature', () => {
+    const secret = 'test-secret'
+    const baseParams: CallbackParams = {
+      request_uri: 'urn:ietf:params:oauth:request_uri:test',
+      email: 'alice@example.com',
+      approved: '1',
+      new_account: '1',
+    }
+    const { sig, ts } = signCallback(
+      { ...baseParams, delivery: 'iframe' },
+      secret,
+    )
+    expect(verifyCallback(baseParams, ts, sig, secret)).toBe(false)
   })
 })

@@ -62,6 +62,33 @@ export function createCompleteRouter(
       return
     }
 
+    if (flow.delivery === 'iframe') {
+      res.removeHeader('X-Frame-Options')
+      const trustedClients = (process.env.PDS_OAUTH_TRUSTED_CLIENTS ?? '')
+        .split(',')
+        .filter(Boolean)
+      const allowedOrigins = trustedClients
+        .map((client) => {
+          try {
+            return new URL(client).origin
+          } catch {
+            return ''
+          }
+        })
+        .filter(Boolean)
+        .join(' ')
+      if (allowedOrigins) {
+        const existingCsp = res.getHeader('Content-Security-Policy')
+        const normalizedCsp = Array.isArray(existingCsp)
+          ? existingCsp.join('; ')
+          : (existingCsp?.toString() ?? '')
+        const cspWithFrameAncestors = normalizedCsp
+          ? `${normalizedCsp}; frame-ancestors ${allowedOrigins}`
+          : `frame-ancestors ${allowedOrigins}`
+        res.setHeader('Content-Security-Policy', cspWithFrameAncestors)
+      }
+    }
+
     // Step 3: Get better-auth session to extract verified email
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- better-auth session type not exported
     let session: any
@@ -135,6 +162,7 @@ export function createCompleteRouter(
           email,
           approved: '1',
           new_account: '1',
+          delivery: flow.delivery,
         }
         const { sig, ts } = signCallback(
           callbackParams,
@@ -194,6 +222,7 @@ export function createCompleteRouter(
       email,
       approved: '1',
       new_account: '0',
+      delivery: flow.delivery,
     }
     const { sig, ts } = signCallback(
       callbackParams,

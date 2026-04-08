@@ -64,6 +64,7 @@ export async function GET(request: Request) {
     const handle = (url.searchParams.get('handle') || '')
       .replace(/^@/, '')
       .trim()
+    const delivery = url.searchParams.get('delivery')
     const handleMode = url.searchParams.get('handle_mode') || ''
     const handleModeParam = handleMode
       ? `&epds_handle_mode=${encodeURIComponent(handleMode)}`
@@ -212,6 +213,19 @@ export async function GET(request: Request) {
       ? `&login_hint=${encodeURIComponent(email)}`
       : ''
     const authUrl = `${authEndpoint}?client_id=${encodeURIComponent(clientId)}&request_uri=${encodeURIComponent(parData.request_uri)}${loginHintParam}${handleModeParam}`
+
+    if (delivery === 'iframe') {
+      const iframeAuthUrl = `${authUrl}&epds_delivery=iframe`
+      const resp = NextResponse.json({ authorizeUrl: iframeAuthUrl })
+      resp.cookies.set(oauthCookie.name, oauthCookie.value, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        maxAge: 600,
+        path: '/',
+      })
+      return resp
+    }
 
     console.log('[oauth/login] Redirecting to auth')
     const response = NextResponse.redirect(authUrl)

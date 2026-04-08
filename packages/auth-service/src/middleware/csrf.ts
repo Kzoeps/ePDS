@@ -1,20 +1,26 @@
-import type { Request, Response, NextFunction } from 'express'
 import * as crypto from 'node:crypto'
+import type { Request, Response, NextFunction } from 'express'
+import type { EpdsDb } from '@certified-app/shared'
 
 const CSRF_COOKIE = 'epds_csrf'
 const CSRF_HEADER = 'x-csrf-token'
 
-export function csrfProtection(_secret: string) {
+export function csrfProtection(db: EpdsDb) {
   return (req: Request, res: Response, next: NextFunction): void => {
     // GET requests: set CSRF cookie if not present
     if (req.method === 'GET') {
+      const flowId = req.cookies.epds_auth_flow as string | undefined
+      const flow = flowId ? db.getAuthFlow(flowId) : null
+      const isIframe = flow?.delivery === 'iframe'
+
       if (!req.cookies[CSRF_COOKIE]) {
         const token = crypto.randomBytes(32).toString('hex')
         res.cookie(CSRF_COOKIE, token, {
           httpOnly: true,
           secure: process.env.NODE_ENV !== 'development',
-          sameSite: 'lax',
+          sameSite: isIframe ? 'none' : 'lax',
           maxAge: 30 * 60 * 1000, // 30 minutes
+          ...(isIframe ? { partitioned: true } : {}),
         })
         res.locals.csrfToken = token
       } else {

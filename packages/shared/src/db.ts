@@ -38,6 +38,7 @@ export interface AuthFlowRow {
   clientId: string | null
   email: string | null
   handleMode: HandleMode | null
+  delivery: 'redirect' | 'iframe'
   createdAt: number
   expiresAt: number
 }
@@ -181,6 +182,13 @@ export class EpdsDb {
       // v8: Add handle_mode column to auth_flow for per-flow handle assignment strategy
       () => {
         this.db.exec(`ALTER TABLE auth_flow ADD COLUMN handle_mode TEXT;`)
+      },
+
+      // v9: Add delivery column to auth_flow for iframe vs redirect flows
+      () => {
+        this.db.exec(
+          `ALTER TABLE auth_flow ADD COLUMN delivery TEXT NOT NULL DEFAULT 'redirect';`,
+        )
       },
     ]
 
@@ -410,18 +418,21 @@ export class EpdsDb {
     requestUri: string
     clientId: string | null
     handleMode?: HandleMode | null
+    delivery?: 'redirect' | 'iframe'
     expiresAt: number
   }): void {
+    const delivery = data.delivery ?? 'redirect'
     this.db
       .prepare(
-        `INSERT INTO auth_flow (flow_id, request_uri, client_id, handle_mode, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO auth_flow (flow_id, request_uri, client_id, handle_mode, delivery, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         data.flowId,
         data.requestUri,
         data.clientId,
         data.handleMode ?? null,
+        delivery,
         Date.now(),
         data.expiresAt,
       )
@@ -431,7 +442,7 @@ export class EpdsDb {
     return this.db
       .prepare(
         `SELECT flow_id as flowId, request_uri as requestUri, client_id as clientId,
-       email, handle_mode as handleMode, created_at as createdAt, expires_at as expiresAt
+       email, handle_mode as handleMode, delivery, created_at as createdAt, expires_at as expiresAt
        FROM auth_flow WHERE flow_id = ? AND expires_at > ?`,
       )
       .get(flowId, Date.now()) as AuthFlowRow | undefined
@@ -442,7 +453,7 @@ export class EpdsDb {
     return this.db
       .prepare(
         `SELECT flow_id as flowId, request_uri as requestUri, client_id as clientId,
-       email, handle_mode as handleMode, created_at as createdAt, expires_at as expiresAt
+       email, handle_mode as handleMode, delivery, created_at as createdAt, expires_at as expiresAt
        FROM auth_flow WHERE request_uri = ? AND expires_at > ?
        ORDER BY created_at DESC LIMIT 1`,
       )

@@ -5,6 +5,7 @@
  * minimal mock req/res objects.
  */
 import { describe, it, expect } from 'vitest'
+import type { EpdsDb } from '@certified-app/shared'
 import { csrfProtection, getCsrfToken } from '../middleware/csrf.js'
 
 /** Build a minimal mock request. */
@@ -46,7 +47,8 @@ function makeRes() {
 }
 
 describe('csrfProtection middleware', () => {
-  const middleware = csrfProtection('test-secret')
+  const db = { getAuthFlow: () => null } as unknown as EpdsDb
+  const middleware = csrfProtection(db)
 
   describe('GET requests', () => {
     it('sets a CSRF cookie when none exists', () => {
