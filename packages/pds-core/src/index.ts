@@ -649,16 +649,26 @@ async function main() {
         res.status(401).json({ error: 'Unauthorized' })
         return
       }
-      const limit = Math.min(20, Math.max(1, Number(req.query.limit) || 5))
+      const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 5))
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const am = pds.ctx.accountManager as any
         const db = am.db
 
+        // Join actor with account to pull the email too, so we can
+        // cross-reference e2e scenario test emails (e.g. the
+        // "approved-untrusted-<ts>@example.com" pattern) against the
+        // DID in the debug-grants lookup.
         const rows = await db.db
           .selectFrom('actor')
-          .select(['did', 'handle', 'createdAt'])
-          .orderBy('createdAt', 'desc')
+          .leftJoin('account', 'account.did', 'actor.did')
+          .select([
+            'actor.did as did',
+            'actor.handle as handle',
+            'actor.createdAt as createdAt',
+            'account.email as email',
+          ])
+          .orderBy('actor.createdAt', 'desc')
           .limit(limit)
           .execute()
 
