@@ -2,13 +2,50 @@
  * Tests for client metadata resolution (resolveClientName, resolveClientMetadata).
  *
  * Uses global fetch mocking to simulate HTTP responses without real network calls.
- * Return Promise.resolve(...) instead of async () => ... to avoid
- * @typescript-eslint/require-await lint errors.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from 'vitest'
 import { resolveClientName, resolveClientMetadata } from '../client-metadata.js'
 
-// Save original fetch
+// ── fetch mock helpers ─────────────────────────────────────────────────────
+//
+// Every test in this file either resolves fetch with a JSON body, resolves
+// with a non-ok status, or rejects. Collapsing those three shapes into
+// helpers keeps each test focused on what's specific to it (the URL, the
+// body, the assertion) rather than the boilerplate of building a Response-
+// shaped mock.
+
+function installFetchMock(impl: Mock): Mock {
+  globalThis.fetch = impl as unknown as typeof fetch
+  return impl
+}
+
+function mockFetchOk(body: Record<string, unknown>): Mock {
+  return installFetchMock(
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(body),
+    }),
+  )
+}
+
+function mockFetchNotOk(status: number): Mock {
+  return installFetchMock(vi.fn().mockResolvedValue({ ok: false, status }))
+}
+
+function mockFetchReject(message: string): Mock {
+  return installFetchMock(vi.fn().mockRejectedValue(new Error(message)))
+}
+
+// ── setup / teardown ───────────────────────────────────────────────────────
+
 const originalFetch = globalThis.fetch
 
 beforeEach(() => {
@@ -19,6 +56,8 @@ afterEach(() => {
   globalThis.fetch = originalFetch
 })
 
+// ── tests ──────────────────────────────────────────────────────────────────
+
 describe('resolveClientMetadata', () => {
   it('returns client_name for non-URL client_id', async () => {
     const metadata = await resolveClientMetadata('my-local-app')
@@ -26,15 +65,11 @@ describe('resolveClientMetadata', () => {
   })
 
   it('fetches metadata from URL client_id', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          client_name: 'Cool App',
-          client_uri: 'https://cool.app',
-          logo_uri: 'https://cool.app/logo.png',
-        }),
-    }) as unknown as typeof fetch
+    mockFetchOk({
+      client_name: 'Cool App',
+      client_uri: 'https://cool.app',
+      logo_uri: 'https://cool.app/logo.png',
+    })
 
     const metadata = await resolveClientMetadata(
       'https://shared-cool.app/client-metadata.json',
@@ -45,17 +80,13 @@ describe('resolveClientMetadata', () => {
   })
 
   it('preserves ePDS extension fields', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          client_name: 'Extended App',
-          brand_color: '#ff0000',
-          background_color: '#ffffff',
-          epds_handle_mode: 'random',
-          epds_skip_consent_on_signup: true,
-        }),
-    }) as unknown as typeof fetch
+    mockFetchOk({
+      client_name: 'Extended App',
+      brand_color: '#ff0000',
+      background_color: '#ffffff',
+      epds_handle_mode: 'random',
+      epds_skip_consent_on_signup: true,
+    })
 
     const metadata = await resolveClientMetadata(
       'https://shared-extended.app/client-metadata.json',
@@ -67,9 +98,7 @@ describe('resolveClientMetadata', () => {
   })
 
   it('falls back to domain on fetch failure', async () => {
-    globalThis.fetch = vi
-      .fn()
-      .mockRejectedValue(new Error('Network error')) as unknown as typeof fetch
+    mockFetchReject('Network error')
 
     const metadata = await resolveClientMetadata(
       'https://shared-broken.app/client-metadata.json',
@@ -78,10 +107,7 @@ describe('resolveClientMetadata', () => {
   })
 
   it('falls back to domain on non-ok response', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 404,
-    }) as unknown as typeof fetch
+    mockFetchNotOk(404)
 
     const metadata = await resolveClientMetadata(
       'https://shared-missing.app/client-metadata.json',
@@ -90,11 +116,7 @@ describe('resolveClientMetadata', () => {
   })
 
   it('caches successful fetches', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ client_name: 'Cached App' }),
-    }) as unknown as typeof fetch
-    globalThis.fetch = mockFetch
+    const mockFetch = mockFetchOk({ client_name: 'Cached App' })
 
     await resolveClientMetadata(
       'https://shared-cached.app/client-metadata.json',
@@ -108,10 +130,7 @@ describe('resolveClientMetadata', () => {
   })
 
   it('caches failures briefly', async () => {
-    const mockFetch = vi
-      .fn()
-      .mockRejectedValue(new Error('Down')) as unknown as typeof fetch
-    globalThis.fetch = mockFetch
+    const mockFetch = mockFetchReject('Down')
 
     await resolveClientMetadata('https://shared-down.app/client-metadata.json')
     await resolveClientMetadata('https://shared-down.app/client-metadata.json')
@@ -121,10 +140,7 @@ describe('resolveClientMetadata', () => {
   })
 
   it('handles http:// URLs', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ client_name: 'HTTP App' }),
-    }) as unknown as typeof fetch
+    mockFetchOk({ client_name: 'HTTP App' })
 
     const metadata = await resolveClientMetadata(
       'http://shared-local.app/client-metadata.json',
@@ -135,10 +151,7 @@ describe('resolveClientMetadata', () => {
 
 describe('resolveClientName', () => {
   it('returns client_name from metadata', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ client_name: 'Named App' }),
-    }) as unknown as typeof fetch
+    mockFetchOk({ client_name: 'Named App' })
 
     const name = await resolveClientName(
       'https://shared-named.app/client-metadata.json',
@@ -147,10 +160,7 @@ describe('resolveClientName', () => {
   })
 
   it('falls back to domain when client_name is missing', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({}),
-    }) as unknown as typeof fetch
+    mockFetchOk({})
 
     const name = await resolveClientName(
       'https://shared-no-name.app/client-metadata.json',
@@ -164,10 +174,7 @@ describe('resolveClientName', () => {
   })
 
   it('returns "an application" when domain extraction fails', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({}),
-    }) as unknown as typeof fetch
+    mockFetchOk({})
 
     // The client_name is undefined, but extractDomain returns hostname
     // so this falls back to the domain. Test a truly broken URL case.
