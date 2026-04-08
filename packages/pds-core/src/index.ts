@@ -32,7 +32,10 @@ import {
   verifyCallback,
   escapeHtml,
   validateLocalPart,
+  resolveClientMetadata,
+  getClientCss,
 } from '@certified-app/shared'
+import { createClientCssInjectionMiddleware } from './lib/client-css-injection.js'
 
 const logger = createLogger('pds-core')
 
@@ -431,6 +434,46 @@ async function main() {
     }
     stack.splice(insertIdx, 0, layer)
     logger.info('AS metadata override installed')
+  }
+
+  // =========================================================================
+  // CSS injection for trusted OAuth clients
+  // =========================================================================
+  //
+  // The npm @atproto/oauth-provider pre-computes CSS at factory init time.
+  // We intercept /oauth/authorize responses to inject a <style> tag with
+  // client-provided CSS and add the SHA256 hash to the CSP style-src.
+
+  const trustedClients = (process.env.PDS_OAUTH_TRUSTED_CLIENTS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  if (trustedClients.length > 0) {
+    const cssInjectionMiddleware = createClientCssInjectionMiddleware({
+      trustedClients,
+      resolveClientMetadata,
+      getClientCss,
+      logger,
+    })
+
+    // Insert into Express stack after expressInit (same approach as AS metadata)
+    pds.app.use(cssInjectionMiddleware)
+    const cssLayer = stack?.pop()
+    if (stack && cssLayer) {
+      let insertIdx = 0
+      for (let i = 0; i < stack.length; i++) {
+        if (stack[i].name === 'expressInit') {
+          insertIdx = i + 1
+          break
+        }
+      }
+      stack.splice(insertIdx, 0, cssLayer)
+      logger.info(
+        { trustedClients },
+        'CSS injection middleware installed for trusted OAuth clients',
+      )
+    }
   }
 
   // =========================================================================

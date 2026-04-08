@@ -10,7 +10,6 @@ export {
   hashToken,
   timingSafeEqual,
   generateCsrfToken,
-  generateOtpCode,
   generateRandomHandle,
   signCallback,
   verifyCallback,
@@ -37,3 +36,13 @@ export {
   VALID_HANDLE_MODES,
 } from './handle.js'
 export type { HandleMode } from './handle.js'
+export {
+  resolveClientMetadata,
+  resolveClientName,
+  escapeCss,
+  getClientCss,
+  clearClientMetadataCache,
+} from './client-metadata.js'
+export type { ClientMetadata, ClientBranding } from './client-metadata.js'
+export { makeSafeFetch } from './safe-fetch.js'
+export type { SafeFetchOptions } from './safe-fetch.js'

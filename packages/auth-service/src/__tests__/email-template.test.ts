@@ -6,12 +6,19 @@
  * using a jsonTransport (no real SMTP). We also test the fetchTemplate
  * logic indirectly via sendOtpCode with mocked fetch.
  */
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EmailSender } from '../email/sender.js'
-import { formatOtpHtmlGrouped } from '@certified-app/shared'
+import {
+  formatOtpHtmlGrouped,
+  clearClientMetadataCache,
+} from '@certified-app/shared'
 import type { EmailConfig } from '@certified-app/shared'
 
 const originalFetch = globalThis.fetch
+
+beforeEach(() => {
+  clearClientMetadataCache()
+})
 
 afterEach(() => {
   globalThis.fetch = originalFetch
@@ -76,28 +83,29 @@ describe('EmailSender', () => {
   describe('sendOtpCode (client template)', () => {
     it('uses client template when available', async () => {
       const mockFetch = vi.fn((url: string) => {
-        if (url === 'https://app.example/client-metadata.json') {
+        if (url === 'https://branded.app/client-metadata.json') {
           return Promise.resolve({
             ok: true,
+            headers: { get: () => null },
             json: () =>
               Promise.resolve({
                 client_name: 'Branded App',
-                email_template_uri: 'https://app.example/email-template.html',
-                logo_uri: 'https://app.example/logo.png',
+                email_template_uri: 'https://branded.app/email-template.html',
+                logo_uri: 'https://branded.app/logo.png',
               }),
           })
         }
-        if (url === 'https://app.example/email-template.html') {
+        if (url === 'https://branded.app/email-template.html') {
           return Promise.resolve({
             ok: true,
-            headers: new Headers({ 'content-length': '100' }),
+            headers: { get: () => null },
             text: () =>
               Promise.resolve(
                 '<html><body>Your code is {{code}} for {{app_name}}</body></html>',
               ),
           })
         }
-        return Promise.resolve({ ok: false })
+        return Promise.resolve({ ok: false, headers: { get: () => null } })
       })
       globalThis.fetch = mockFetch as unknown as typeof fetch
 
@@ -109,14 +117,14 @@ describe('EmailSender', () => {
         to: 'branded@test.com',
         code: '99999999',
         clientAppName: 'Fallback Name',
-        clientId: 'https://app.example/client-metadata.json',
+        clientId: 'https://branded.app/client-metadata.json',
         pdsName: 'Test PDS',
         pdsDomain: 'pds.example',
       })
 
       // Verify the template URL was fetched
       const fetchedUrls = mockFetch.mock.calls.map((call) => call[0])
-      expect(fetchedUrls).toContain('https://app.example/email-template.html')
+      expect(fetchedUrls).toContain('https://branded.app/email-template.html')
 
       // Verify the sent email uses the branded template content
       expect(sendMailSpy).toHaveBeenCalledOnce()
@@ -136,10 +144,11 @@ describe('EmailSender', () => {
         if (url.includes('client-metadata.json')) {
           return Promise.resolve({
             ok: true,
+            headers: { get: () => null },
             json: () =>
               Promise.resolve({
                 client_name: 'Failing App',
-                email_template_uri: 'https://app.example/broken-template.html',
+                email_template_uri: 'https://failing.app/broken-template.html',
               }),
           })
         }
@@ -162,7 +171,7 @@ describe('EmailSender', () => {
 
       // Verify the broken template URL was attempted
       const fetchedUrls = mockFetch.mock.calls.map((call) => call[0])
-      expect(fetchedUrls).toContain('https://app.example/broken-template.html')
+      expect(fetchedUrls).toContain('https://failing.app/broken-template.html')
 
       // Verify fallback to default template (sign-in, not branded)
       expect(sendMailSpy).toHaveBeenCalledOnce()
