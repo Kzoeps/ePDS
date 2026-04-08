@@ -33,7 +33,6 @@ Feature: Passwordless authentication via email OTP
     Then an OTP email arrives in the mail trap
     And the email subject contains "Sign-in"
     When the user enters the OTP code
-    And the user approves the consent screen
     Then the browser is redirected back to the demo client with a valid session
 
   @email
