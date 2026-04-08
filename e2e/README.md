@@ -159,3 +159,5 @@ E2E_MAILPIT_PASS=     # leave empty if you didn't enable auth
 ```
 
 The web UI is available at <http://localhost:8025>.
+
+If you've deployed Mailpit then you can access it at the deployed URL. If you've set MP_UI_AUTH env var which would look something like this: admin:password it will ask you for a username and password. The username is admin and the password is password.
