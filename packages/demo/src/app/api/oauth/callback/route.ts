@@ -20,6 +20,7 @@ import {
   PDS_URL,
   PLC_DIRECTORY_URL,
 } from '@/lib/auth'
+import { signClientAssertion } from '@/lib/client-jwk'
 import { cookies } from 'next/headers'
 import {
   getOAuthSessionFromCookie,
@@ -77,6 +78,25 @@ export async function GET(request: NextRequest) {
       code_verifier: codeVerifier,
     })
 
+    // If this demo is configured as a confidential OAuth client
+    // (EPDS_CLIENT_PRIVATE_JWK set), sign a client_assertion and add
+    // it to the token exchange request. This is required to convince
+    // @atproto/oauth-provider to honour previously-recorded consent
+    // grants on return logins — otherwise the upstream force-consent
+    // rule for public clients kicks in. See HYPER-270 for the full
+    // diagnosis.
+    const clientAssertion = await signClientAssertion({
+      clientId,
+      audience: tokenUrl,
+    })
+    if (clientAssertion) {
+      tokenBody.set(
+        'client_assertion_type',
+        'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      )
+      tokenBody.set('client_assertion', clientAssertion)
+    }
+
     // First attempt
     let dpopProof = createDpopProof({
       privateKey,
@@ -105,6 +125,17 @@ export async function GET(request: NextRequest) {
           url: tokenUrl,
           nonce: dpopNonce,
         })
+
+        // Regenerate the client_assertion for the retry so its jti is
+        // fresh (see the matching comment in the PAR retry path in
+        // api/oauth/login/route.ts).
+        const clientAssertionRetry = await signClientAssertion({
+          clientId,
+          audience: tokenUrl,
+        })
+        if (clientAssertionRetry) {
+          tokenBody.set('client_assertion', clientAssertionRetry)
+        }
 
         tokenRes = await fetch(tokenUrl, {
           method: 'POST',

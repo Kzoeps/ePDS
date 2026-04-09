@@ -30,6 +30,7 @@ import {
   discoverOAuthEndpoints,
 } from '@/lib/auth'
 import { createOAuthSessionCookie } from '@/lib/session'
+import { signClientAssertion } from '@/lib/client-jwk'
 import { validateEmail, validateHandle, sanitizeForLog } from '@/lib/validation'
 import { checkRateLimit } from '@/lib/ratelimit'
 
@@ -129,6 +130,24 @@ export async function GET(request: Request) {
       code_challenge_method: 'S256',
     })
 
+    // If this demo is configured as a confidential OAuth client
+    // (EPDS_CLIENT_PRIVATE_JWK set), sign a client_assertion and add
+    // it to the PAR body. The PDS's PAR endpoint enforces the same
+    // client authentication method as the token endpoint, so missing
+    // the assertion here produces "client authentication method
+    // private_key_jwt required a client_assertion". See HYPER-270.
+    const parClientAssertion = await signClientAssertion({
+      clientId,
+      audience: parEndpoint,
+    })
+    if (parClientAssertion) {
+      parBody.set(
+        'client_assertion_type',
+        'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      )
+      parBody.set('client_assertion', parClientAssertion)
+    }
+
     console.log('[oauth/login] Sending PAR request')
 
     const parRes = await fetch(parEndpoint, {
@@ -167,6 +186,17 @@ export async function GET(request: Request) {
           url: parEndpoint,
           nonce: dpopNonce,
         })
+
+        // Regenerate the client_assertion for the retry so its jti is
+        // fresh and the PDS's replay store doesn't reject it as a
+        // duplicate of the first attempt's assertion.
+        const parClientAssertionRetry = await signClientAssertion({
+          clientId,
+          audience: parEndpoint,
+        })
+        if (parClientAssertionRetry) {
+          parBody.set('client_assertion', parClientAssertionRetry)
+        }
 
         const parRes2 = await fetch(parEndpoint, {
           method: 'POST',
