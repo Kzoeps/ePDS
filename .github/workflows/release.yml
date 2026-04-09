@@ -92,6 +92,44 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
 
+      # changesets/action does not support templating the version into the
+      # PR title (see changesets/action#388). As a workaround, rename the
+      # Release PR to include the version number after the action has run
+      # the version bump. The commit message on the release branch is left
+      # as the static "chore: release" value — it gets rewritten on every
+      # re-run of this workflow, and the merge commit title on main is
+      # controlled by the person merging the PR.
+      - name: Rename Release PR with version
+        if: steps.changesets.outputs.pullRequestNumber != ''
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          PR_NUMBER: ${{ steps.changesets.outputs.pullRequestNumber }}
+        run: |
+          set -o pipefail
+          if ! PACKAGE_JSON=$(gh api \
+              "repos/${{ github.repository }}/contents/package.json?ref=changeset-release/main" \
+              -H "Accept: application/vnd.github.raw"); then
+            echo "::warning::Could not fetch package.json from changeset-release/main; leaving PR title unchanged."
+            exit 0
+          fi
+          VERSION=$(node -e "
+            try {
+              const v = JSON.parse(process.argv[1]).version;
+              if (!v) process.exit(1);
+              process.stdout.write(v);
+            } catch (e) { process.exit(1); }
+          " "$PACKAGE_JSON" || true)
+          if [ -z "$VERSION" ]; then
+            echo "::warning::Could not parse version from package.json; leaving PR title unchanged."
+            exit 0
+          fi
+          NEW_TITLE="prepare for release v$VERSION"
+          echo "Renaming PR #$PR_NUMBER to: $NEW_TITLE"
+          if ! gh pr edit "$PR_NUMBER" --title "$NEW_TITLE"; then
+            echo "::warning::Failed to rename PR #$PR_NUMBER; leaving title unchanged."
+            exit 0
+          fi
+
       - name: Log release
         if: steps.changesets.outputs.published == 'true'
         run: |
