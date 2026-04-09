@@ -23,7 +23,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  e2e:
+  # Detect whether this PR touches anything that could affect the
+  # running services or the e2e suite itself. We can't use a
+  # workflow-level `on.pull_request.paths:` filter because a workflow
+  # that is skipped via `paths:` never produces a check run, which
+  # breaks branch protection rules that require this check to pass.
+  # Instead we always run the workflow and skip the expensive `run`
+  # job below via `if:` — a skipped *job* (unlike a skipped workflow)
+  # still reports a check run with conclusion=skipped, which branch
+  # protection treats as passing.
+  #
+  # Only meaningful on pull_request: dorny/paths-filter diffs the PR
+  # head against the PR base via the GitHub API, with no checkout
+  # required. On push/workflow_dispatch the action has no natural
+  # base to diff against, so we skip this job entirely and let the
+  # `run` job below run unconditionally for those events.
+  gate:
+    name: gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            relevant:
+              - 'packages/**'
+              - 'e2e/**'
+              - 'features/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'Dockerfile.*'
+              - 'playwright.config.*'
+              - '.github/workflows/e2e-tests.yml'
+
+  run:
+    name: run
+    needs: gate
+    # Run the full suite when:
+    #   - a PR touched relevant paths, OR
+    #   - this is the post-merge backstop on main (push), OR
+    #   - a human manually retriggered via workflow_dispatch.
+    #
+    # `always()` is needed because `gate` is skipped on non-PR
+    # events, and GitHub would otherwise cascade-skip this job.
+    if: always() && (needs.gate.outputs.relevant == 'true' || github.event_name != 'pull_request')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
