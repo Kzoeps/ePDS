@@ -6,7 +6,7 @@ Feature: Social login (Google, GitHub)
 
   Background:
     Given the ePDS test environment is running
-    And a demo OAuth client is registered
+    And the demo OAuth client's metadata is discoverable
 
   # --- Login page rendering ---
 

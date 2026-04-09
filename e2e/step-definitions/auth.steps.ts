@@ -2,10 +2,14 @@ import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 import { testEnv } from '../support/env.js'
 import type { EpdsWorld } from '../support/world.js'
-import { getPage, resetBrowserContext } from '../support/utils.js'
+import {
+  getPage,
+  resetBrowserContext,
+  assertDemoClientSession,
+} from '../support/utils.js'
 import { createAccountViaOAuth, pickHandle } from '../support/flows.js'
 import { sharedBrowser } from '../support/hooks.js'
-import { waitForEmail, extractOtp, clearMailpit } from '../support/mailpit.js'
+import { clearMailpit } from '../support/mailpit.js'
 
 function getOtpAlphabet(otpCharset: 'numeric' | 'alphanumeric'): string {
   return otpCharset === 'alphanumeric'
@@ -62,24 +66,6 @@ async function buildIncorrectOtpCode(world: EpdsWorld): Promise<string> {
   return mutateOtpCode('0'.repeat(otpLength), otpCharset)
 }
 
-async function assertDemoClientSession(world: EpdsWorld): Promise<void> {
-  const page = getPage(world)
-
-  await page.waitForURL('**/welcome', { timeout: 30_000 })
-
-  const cookies = await page.context().cookies()
-  const sessionCookie = cookies.find((cookie) => cookie.name === 'session_id')
-  if (!sessionCookie?.value) {
-    throw new Error('Demo client session cookie was not set after redirect')
-  }
-
-  const body = page.locator('body')
-  await expect(body).toContainText('You are signed in.')
-  await expect(body).toContainText('Sign out')
-  await expect(body).toContainText(/@[\w.-]+/)
-  await expect(body).toContainText(/did:[a-z0-9:]+/i)
-}
-
 // ---------------------------------------------------------------------------
 // Scenario setup — compound Givens that create accounts as test preconditions
 // ---------------------------------------------------------------------------
@@ -87,14 +73,16 @@ async function assertDemoClientSession(world: EpdsWorld): Promise<void> {
 /**
  * Creates a fresh PDS account for returning-user scenarios.
  *
- * Drives the browser through the full new-user sign-up flow, then resets
- * the browser context so the returning-user login starts with a clean
- * session (no cookies from the sign-up). The generated email is stored on
- * world.testEmail for use by subsequent steps.
+ * Drives the browser through the full new-user sign-up flow via the trusted
+ * demo client, then resets the browser context so the returning-user login
+ * starts with a clean session (no cookies from the sign-up). The generated
+ * email is stored on world.testEmail for use by subsequent steps.
  *
- * Note: the first login to the demo client always shows the consent screen
- * for a returning user (account exists but no client_logins record yet).
- * The scenario is expected to handle that with "the user approves the consent screen".
+ * Note: because sign-up via the trusted demo goes through the
+ * PDS_SIGNUP_ALLOW_CONSENT_SKIP path, setAuthorizedClient is called during
+ * sign-up — so the returning login will skip the consent screen entirely
+ * and land directly on /welcome. Scenarios built on top of this Given must
+ * not include "the user approves the consent screen" as a step.
  */
 Given('a returning user has a PDS account', async function (this: EpdsWorld) {
   if (!testEnv.mailpitPass) return 'pending'
@@ -108,12 +96,15 @@ Given('a returning user has a PDS account', async function (this: EpdsWorld) {
 })
 
 /**
- * Creates a PDS account AND completes a first login (including approving the
- * consent screen), so that the demo client is already recorded in client_logins.
- * Resets the browser context afterwards so the actual test login starts fresh.
+ * Creates a PDS account via the trusted demo client, which records the
+ * client as authorized via setAuthorizedClient as part of the sign-up
+ * consent-skip flow (see packages/pds-core/src/index.ts step 5). Resets
+ * the browser context afterwards so the actual test login starts fresh.
  *
- * After this step, the next login for world.testEmail will skip consent entirely
- * and land directly on /welcome.
+ * After this step, the next login for world.testEmail will skip consent
+ * entirely and land directly on /welcome — not because of any browser
+ * state, but because the PDS recorded the client as authorized during
+ * sign-up.
  */
 Given(
   'a returning user has already approved the demo client',
@@ -121,39 +112,7 @@ Given(
     if (!testEnv.mailpitPass) return 'pending'
 
     const email = `approved-${Date.now()}@example.com`
-
-    // Step 1: Create the account via the new-user sign-up flow
     await createAccountViaOAuth(this, email)
-
-    // Reset context between sign-up and first returning login
-    await resetBrowserContext(this, sharedBrowser)
-
-    // Step 2: First returning-user login — consent screen will appear, approve it
-    const page = getPage(this)
-    await page.goto(testEnv.demoUrl)
-    await page.fill('#email', email)
-    await clearMailpit(email)
-    await page.click('button[type=submit]')
-    // Sync guard — wait for OTP form before fetching email
-    await expect(page.locator('#step-otp.active')).toBeVisible({
-      timeout: 30_000,
-    })
-
-    const message = await waitForEmail(`to:${email}`)
-    const otp = await extractOtp(message.ID)
-    await page.fill('#code', otp)
-    await page.click('#form-verify-otp .btn-primary')
-
-    // Approve consent — this records the client_logins entry
-    await expect(page.getByRole('button', { name: 'Approve' })).toBeVisible({
-      timeout: 30_000,
-    })
-    await page.getByRole('button', { name: 'Approve' }).click()
-    await page.waitForURL('**/welcome', { timeout: 30_000 })
-
-    await clearMailpit(email)
-
-    // Reset context again so the actual test scenario starts with a clean session
     await resetBrowserContext(this, sharedBrowser)
   },
 )
@@ -229,10 +188,10 @@ When(
 
 When('the user approves the consent screen', async function (this: EpdsWorld) {
   const page = getPage(this)
-  await expect(page.getByRole('button', { name: 'Approve' })).toBeVisible({
+  await expect(page.getByRole('button', { name: 'Authorize' })).toBeVisible({
     timeout: 30_000,
   })
-  await page.getByRole('button', { name: 'Approve' }).click()
+  await page.getByRole('button', { name: 'Authorize' }).click()
 })
 
 // ---------------------------------------------------------------------------

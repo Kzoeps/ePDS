@@ -37,3 +37,5 @@ export {
   VALID_HANDLE_MODES,
 } from './handle.js'
 export type { HandleMode } from './handle.js'
+export { resolveClientMetadata, resolveClientName } from './client-metadata.js'
+export type { ClientMetadata } from './client-metadata.js'

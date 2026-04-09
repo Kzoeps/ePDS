@@ -17,7 +17,14 @@ function required(name: string): string {
 export const testEnv = {
   pdsUrl: required('E2E_PDS_URL'),
   authUrl: required('E2E_AUTH_URL'),
+  // `demoUrl` is the trusted demo client — kept under this name for
+  // backwards compatibility with existing scenarios that just say
+  // "the demo client". New consent-skip scenarios that need to
+  // distinguish trusted from untrusted should use the explicit
+  // `demoTrustedUrl` / `demoUntrustedUrl` accessors below.
   demoUrl: required('E2E_DEMO_URL'),
+  demoTrustedUrl: required('E2E_DEMO_URL'),
+  demoUntrustedUrl: process.env.E2E_DEMO_UNTRUSTED_URL,
   mailpitUrl:
     process.env.E2E_MAILPIT_URL ??
     'https://mailpit-e2e-karma-test.up.railway.app',

@@ -30,6 +30,7 @@ import {
   discoverOAuthEndpoints,
 } from '@/lib/auth'
 import { createOAuthSessionCookie } from '@/lib/session'
+import { signClientAssertion } from '@/lib/client-jwk'
 import { validateEmail, validateHandle, sanitizeForLog } from '@/lib/validation'
 import { checkRateLimit } from '@/lib/ratelimit'
 
@@ -79,7 +80,13 @@ export async function GET(request: Request) {
       return NextResponse.redirect(new URL('/?error=invalid_handle', baseUrl))
     }
 
-    // Determine endpoints: dynamic for handle, defaults for email
+    // Determine endpoints: dynamic for handle, defaults for email.
+    // The `issuer` is the authorization server identifier used as the
+    // `aud` claim in client_assertion JWTs for confidential clients.
+    // For atproto PDSs the PDS is its own authorization server, so the
+    // issuer matches PDS_URL for the email path; for the handle path
+    // we take whatever the PDS's AS metadata declares.
+    let issuer = PDS_URL
     let parEndpoint = `${PDS_URL}/oauth/par`
     let authEndpoint = AUTH_ENDPOINT
     let tokenEndpoint = `${PDS_URL}/oauth/token`
@@ -94,6 +101,7 @@ export async function GET(request: Request) {
       console.log('[oauth/login] Resolved PDS:', sanitizeForLog(pdsUrl))
       const endpoints = await discoverOAuthEndpoints(pdsUrl)
       console.log('[oauth/login] Discovered OAuth endpoints')
+      issuer = endpoints.issuer
       parEndpoint = endpoints.parEndpoint
       authEndpoint = endpoints.authEndpoint
       tokenEndpoint = endpoints.tokenEndpoint
@@ -129,6 +137,29 @@ export async function GET(request: Request) {
       code_challenge_method: 'S256',
     })
 
+    // If this demo is configured as a confidential OAuth client
+    // (EPDS_CLIENT_PRIVATE_JWK set), sign a client_assertion and add
+    // it to the PAR body. The PDS's PAR endpoint enforces the same
+    // client authentication method as the token endpoint, so missing
+    // the assertion here produces "client authentication method
+    // private_key_jwt required a client_assertion". See HYPER-270.
+    //
+    // The `aud` claim MUST be the authorization server's issuer
+    // identifier (not the specific endpoint URL) — upstream atproto
+    // explicitly checks `audience: this.issuer` when verifying the
+    // client_assertion (see @atproto/oauth-provider's client.ts).
+    const parClientAssertion = await signClientAssertion({
+      clientId,
+      audience: issuer,
+    })
+    if (parClientAssertion) {
+      parBody.set(
+        'client_assertion_type',
+        'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      )
+      parBody.set('client_assertion', parClientAssertion)
+    }
+
     console.log('[oauth/login] Sending PAR request')
 
     const parRes = await fetch(parEndpoint, {
@@ -146,6 +177,7 @@ export async function GET(request: Request) {
       codeVerifier,
       dpopPrivateJwk: privateJwk,
       tokenEndpoint,
+      issuer,
       email: email || undefined,
       expectedDid,
       expectedPdsUrl,
@@ -167,6 +199,17 @@ export async function GET(request: Request) {
           url: parEndpoint,
           nonce: dpopNonce,
         })
+
+        // Regenerate the client_assertion for the retry so its jti is
+        // fresh and the PDS's replay store doesn't reject it as a
+        // duplicate of the first attempt's assertion.
+        const parClientAssertionRetry = await signClientAssertion({
+          clientId,
+          audience: issuer,
+        })
+        if (parClientAssertionRetry) {
+          parBody.set('client_assertion', parClientAssertionRetry)
+        }
 
         const parRes2 = await fetch(parEndpoint, {
           method: 'POST',

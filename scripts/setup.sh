@@ -8,6 +8,34 @@ generate_secret() {
   openssl rand -hex 32
 }
 
+# Generate an ES256 (P-256) private JWK as a compact JSON object on a
+# single line — suitable for pasting into an env var.
+#
+# Emits a string like:
+#   {"kty":"EC","crv":"P-256","d":"...","x":"...","y":"...","kid":"..."}
+#
+# Uses Node's built-in crypto module rather than openssl because
+# openssl doesn't directly emit JWK format and translating EC points
+# by hand is error-prone. Node's crypto.generateKeyPairSync +
+# privateKey.export({format:'jwk'}) is two lines and correct by
+# construction.
+#
+# The kid is a short hash of the public coordinates so the same
+# keypair always produces the same kid, matching how the runtime
+# client-jwk.ts helper derives it.
+generate_es256_private_jwk() {
+  node -e '
+    const crypto = require("crypto");
+    const { privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const jwk = privateKey.export({ format: "jwk" });
+    const h = crypto.createHash("sha256");
+    h.update(jwk.x);
+    h.update(jwk.y);
+    jwk.kid = h.digest("base64url").slice(0, 16);
+    process.stdout.write(JSON.stringify(jwk));
+  '
+}
+
 # Portable sed in-place (works on macOS and Linux)
 sed_inplace() {
   if sed --version 2>/dev/null | grep -q GNU; then
@@ -415,6 +443,22 @@ setup_package_envs() {
     sed_inplace "s|^# SESSION_SECRET=.*|SESSION_SECRET=${secret}|" packages/demo/.env
     echo "  Generated SESSION_SECRET"
   fi
+
+  # Generate an ES256 keypair for OAuth confidential-client authentication
+  # (private_key_jwt). Declared in client-metadata.json and used to sign
+  # client_assertion JWTs at the token endpoint. Without this, the upstream
+  # @atproto/oauth-provider classifies the client as public and forcibly
+  # re-prompts consent on every authorize request (see HYPER-270).
+  local existing_jwk
+  existing_jwk=$(read_env_var EPDS_CLIENT_PRIVATE_JWK packages/demo/.env)
+  if [ -z "$existing_jwk" ]; then
+    echo "Generating EPDS_CLIENT_PRIVATE_JWK (ES256 P-256 private JWK)..."
+    local jwk
+    jwk=$(generate_es256_private_jwk)
+    set_env_var EPDS_CLIENT_PRIVATE_JWK "$jwk" packages/demo/.env
+    echo "  Generated EPDS_CLIENT_PRIVATE_JWK"
+  fi
+
   prompt_demo
 
   echo ""
@@ -450,6 +494,18 @@ print_next_steps() {
   echo "  the Docker value (http://core:3000) to the Railway internal URL:"
   echo "    http://<pds-core-service>.railway.internal:3000"
   echo "  The auth service will fail to start without a correct PDS_INTERNAL_URL."
+  echo ""
+  echo "  IMPORTANT: EPDS_CLIENT_PRIVATE_JWK must be DIFFERENT per demo service."
+  echo "  If you deploy more than one demo on Railway (e.g. a trusted demo and"
+  echo "  an untrusted demo to exercise the e2e consent scenarios), each service"
+  echo "  needs its own ES256 keypair — otherwise one demo could forge a client"
+  echo "  assertion claiming to be the other. The packages/demo/.env value above"
+  echo "  can be pasted into ONE demo service; generate a second keypair for"
+  echo "  any additional demo services with:"
+  echo ""
+  echo "    node -e '"'"'const c=require("crypto"); const {privateKey}=c.generateKeyPairSync("ec",{namedCurve:"P-256"}); const j=privateKey.export({format:"jwk"}); const h=c.createHash("sha256"); h.update(j.x); h.update(j.y); j.kid=h.digest("base64url").slice(0,16); console.log(JSON.stringify(j));'"'"
+  echo ""
+  echo "  Paste the output as EPDS_CLIENT_PRIVATE_JWK on the second demo service."
 }
 
 # ── Main ──

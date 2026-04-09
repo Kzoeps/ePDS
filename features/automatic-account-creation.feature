@@ -10,7 +10,7 @@ Feature: Automatic account creation on first login
 
   Background:
     Given the ePDS test environment is running
-    And a demo OAuth client is registered
+    And the demo OAuth client's metadata is discoverable
 
   Scenario: First-time user gets an auto-created PDS account
     Given a new user has registered via the demo client

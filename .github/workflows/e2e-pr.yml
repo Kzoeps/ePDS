@@ -468,19 +468,22 @@ jobs:
           EPDS_URL="https://certified-apppds-core-${ENV_SLUG}.up.railway.app"
           AUTH_URL="https://certified-appauth-service-${ENV_SLUG}.up.railway.app"
           DEMO_URL="https://certified-appdemo-${ENV_SLUG}.up.railway.app"
+          DEMO_UNTRUSTED_URL="https://certified-appdemo-untrusted-${ENV_SLUG}.up.railway.app"
           MAILPIT_URL="https://mailpit-${ENV_SLUG}.up.railway.app"
 
           echo
           echo "Service URLs:"
-          echo "  PDS:     $EPDS_URL"
-          echo "  Auth:    $AUTH_URL"
-          echo "  Demo:    $DEMO_URL"
-          echo "  Mailpit: $MAILPIT_URL"
+          echo "  PDS:            $EPDS_URL"
+          echo "  Auth:           $AUTH_URL"
+          echo "  Demo:           $DEMO_URL"
+          echo "  Demo untrusted: $DEMO_UNTRUSTED_URL"
+          echo "  Mailpit:        $MAILPIT_URL"
 
           {
             echo "epds_url=$EPDS_URL"
             echo "auth_url=$AUTH_URL"
             echo "demo_url=$DEMO_URL"
+            echo "demo_untrusted_url=$DEMO_UNTRUSTED_URL"
             echo "mailpit_url=$MAILPIT_URL"
           } >> "$GITHUB_OUTPUT"
 
@@ -492,9 +495,10 @@ jobs:
           EPDS_URL: ${{ steps.urls.outputs.epds_url }}
           AUTH_URL: ${{ steps.urls.outputs.auth_url }}
           DEMO_URL: ${{ steps.urls.outputs.demo_url }}
+          DEMO_UNTRUSTED_URL: ${{ steps.urls.outputs.demo_untrusted_url }}
           MAILPIT_URL: ${{ steps.urls.outputs.mailpit_url }}
         run: |
-          echo "Health-checking 4 Railway services (5 minutes per service)..."
+          echo "Health-checking 5 Railway services (5 minutes per service)..."
 
           check() {
             local LABEL=$1
@@ -514,19 +518,21 @@ jobs:
             echo "::error::$LABEL ($URL) timed out after 5 minutes"
             exit 1
           }
-          check "PDS"     "${EPDS_URL}/health"
-          check "Auth"    "${AUTH_URL}/health"
-          check "Demo"    "${DEMO_URL}"
-          check "Mailpit" "${MAILPIT_URL}/readyz"
+          check "PDS"            "${EPDS_URL}/health"
+          check "Auth"           "${AUTH_URL}/health"
+          check "Demo"           "${DEMO_URL}"
+          check "Demo untrusted" "${DEMO_UNTRUSTED_URL}"
+          check "Mailpit"        "${MAILPIT_URL}/readyz"
 
           echo
-          echo "All 4 services reachable."
+          echo "All 5 services reachable."
 
       - name: Run e2e suite
         env:
           E2E_PDS_URL: ${{ steps.urls.outputs.epds_url }}
           E2E_AUTH_URL: ${{ steps.urls.outputs.auth_url }}
           E2E_DEMO_URL: ${{ steps.urls.outputs.demo_url }}
+          E2E_DEMO_UNTRUSTED_URL: ${{ steps.urls.outputs.demo_untrusted_url }}
           E2E_MAILPIT_URL: ${{ steps.urls.outputs.mailpit_url }}
           E2E_MAILPIT_USER: ${{ secrets.E2E_MAILPIT_USER }}
           E2E_MAILPIT_PASS: ${{ secrets.E2E_MAILPIT_PASS }}

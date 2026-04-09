@@ -24,8 +24,14 @@ Methods used:
   sliding window (see item 7 below). Used in the `/oauth/epds-callback`
   handler and the `/_internal/ping-request` keepalive.
 - `.setAuthorized(requestUri, client, account, deviceId, deviceMetadata)` —
-  marks a request as authorized and issues an authorization code. This is the
-  core of the ePDS callback mechanism.
+  marks a request as authorized and issues an authorization code. Used in the
+  consent-skip path.
+- `.store.readRequest(requestId)` / `.store.updateRequest(requestId, data)` —
+  direct store access to patch the PAR request's stored `parameters`. Used to
+  set `login_hint` for new accounts so the stock authorize UI auto-selects the
+  session and skips account selection. The provider already mutates parameters
+  during `validate()` (forcing `prompt: 'consent'` for unauthenticated clients),
+  so this is consistent with upstream behavior.
 
 **Breakage scenario:** Method renamed, signature changed, or `requestManager`
 made private. The entire authorization code issuance flow stops working.
@@ -135,14 +141,26 @@ more than the timeout duration.
 The right fix is to upstream a public keepalive/refresh API on
 `@atproto/oauth-provider`.
 
-### 8. OAuth consent tracking
+### 8. OAuth consent tracking (consent-skip path)
 
 **File:** `packages/pds-core/src/index.ts`
 
-- `provider.checkConsentRequired(parameters, clientData)` — assumed to
-  return a boolean
+When `PDS_SIGNUP_ALLOW_CONSENT_SKIP` is enabled, the consent-skip code path
+uses several provider internals to issue an authorization code directly:
+
+- `provider.clientManager.getClient(clientId)` — fetches the `Client` object.
+  The returned `client.info.isTrusted` boolean is used to gate consent-skip.
+  `clientManager` is a `public readonly` property but `ClientManager` and
+  `Client` are not re-exported.
+- `provider.requestManager.get(requestUri, deviceId)` — binds the device to
+  the PAR request (same as item 1 above).
+- `provider.requestManager.setAuthorized(requestUri, client, account, deviceId, deviceMetadata)` —
+  issues the authorization code (same as item 1 above).
 - `provider.accountManager.setAuthorizedClient(account, client, { authorizedScopes })` —
-  assumed signature for recording consent
+  records the client as authorized so future logins can auto-approve.
+
+The normal (non-skip) consent path delegates to the stock `/oauth/authorize`
+endpoint and does not use these internals.
 
 ### 9. `provider.metadata`
 

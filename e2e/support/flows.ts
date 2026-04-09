@@ -52,13 +52,18 @@ export async function pickHandle(world: EpdsWorld): Promise<void> {
 }
 
 /**
- * Drive the full new-user OAuth sign-up flow through the demo app.
+ * Drive the full new-user OAuth sign-up flow through a demo app.
  *
  * The default auth-service config has `handleMode='picker'`, so after OTP
  * verification the user is redirected to /auth/choose-handle and must pick a
  * handle before being returned to the demo /welcome page. Random-handle mode
  * (where the picker is skipped automatically) would need a different auth-
  * service config and is intentionally not exercised here.
+ *
+ * The `demoUrl` parameter defaults to the trusted demo client so existing
+ * callers that pass only (world, email) keep working unchanged. Consent-skip
+ * scenarios that need to drive the untrusted demo client pass
+ * `testEnv.demoUntrustedUrl` explicitly.
  *
  * Steps:
  *   1. Navigate to demoUrl
@@ -76,9 +81,61 @@ export async function pickHandle(world: EpdsWorld): Promise<void> {
  *
  * Callers must check testEnv.mailpitPass before calling this function.
  */
+/**
+ * Drive the new-user OAuth sign-up flow up to — but not through — the
+ * consent screen. Used by consent-screen scenarios that need to assert
+ * the consent screen's contents (and then click Authorize themselves)
+ * rather than breezing past it via createAccountViaOAuth.
+ *
+ * Intended for untrusted demo clients: trusted clients skip consent
+ * entirely on sign-up (see packages/pds-core/src/index.ts step 5) and
+ * would land on /welcome instead of the consent screen, so calling this
+ * against a trusted client will time out on the Authorize button wait.
+ *
+ * Stores testEmail on the world so later steps can refer back to the
+ * same user.
+ *
+ * Callers must check testEnv.mailpitPass before calling this function.
+ */
+export async function startSignUpAwaitingConsent(
+  world: EpdsWorld,
+  email: string,
+  demoUrl: string,
+): Promise<void> {
+  const page = world.page
+  if (!page) throw new Error('page is not initialised')
+
+  await clearMailpit(email)
+
+  await page.goto(demoUrl)
+  await page.fill('#email', email)
+  await page.click('button[type=submit]')
+  await expect(page.locator('#step-otp.active')).toBeVisible({
+    timeout: 30_000,
+  })
+
+  const message = await waitForEmail(`to:${email}`)
+  const otp = await extractOtp(message.ID)
+  await page.fill('#code', otp)
+  await page.click('#form-verify-otp .btn-primary')
+
+  await pickHandle(world)
+
+  // Wait for the consent screen's Authorize button. The subsequent
+  // "a consent screen is displayed" step will do a stronger assertion
+  // (scopes, preamble); this wait is just a sync guard so the caller
+  // is guaranteed to be on the consent page before the next step runs.
+  await expect(page.getByRole('button', { name: 'Authorize' })).toBeVisible({
+    timeout: 30_000,
+  })
+
+  world.testEmail = email
+}
+
 export async function createAccountViaOAuth(
   world: EpdsWorld,
   email: string,
+  demoUrl: string = testEnv.demoTrustedUrl,
 ): Promise<{ did: string; handle: string | undefined }> {
   const page = world.page
   if (!page) throw new Error('page is not initialised')
@@ -86,7 +143,7 @@ export async function createAccountViaOAuth(
   // Clear stale OTP emails so waitForEmail reads the code sent by this submit.
   await clearMailpit(email)
 
-  await page.goto(testEnv.demoUrl)
+  await page.goto(demoUrl)
   await page.fill('#email', email)
   await page.click('button[type=submit]')
   // Sync guard — wait for OTP form to be visible before fetching email
